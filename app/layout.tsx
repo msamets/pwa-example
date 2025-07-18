@@ -46,6 +46,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Job Seeker" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <script src="/sw-register.js" defer></script>
       </head>
       <body>
         <div className="min-h-screen bg-gray-50">

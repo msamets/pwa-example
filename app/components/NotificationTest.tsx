@@ -10,6 +10,42 @@ export default function NotificationTest() {
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [showDebug, setShowDebug] = useState(false)
 
+  // Force service worker update on component mount
+  useEffect(() => {
+    const updateServiceWorker = async () => {
+      if ('serviceWorker' in navigator) {
+        try {
+          console.log('🔄 Checking for service worker updates...')
+          const registrations = await navigator.serviceWorker.getRegistrations()
+
+          for (const registration of registrations) {
+            console.log('🔍 Found service worker registration:', registration.scope)
+
+            // Force update
+            await registration.update()
+            console.log('✅ Service worker updated')
+
+            // If there's a waiting service worker, skip waiting and reload
+            if (registration.waiting) {
+              console.log('⏳ Service worker waiting, forcing activation...')
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+
+              // Listen for controlling change and reload
+              navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log('🔄 New service worker activated, reloading page...')
+                window.location.reload()
+              })
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error updating service worker:', error)
+        }
+      }
+    }
+
+    updateServiceWorker()
+  }, [])
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const info = getIOSInfo()
@@ -653,8 +689,59 @@ export default function NotificationTest() {
     alert(message)
   }
 
+  const updateServiceWorker = async () => {
+    if ('serviceWorker' in navigator) {
+      try {
+        console.log('🔄 Manually checking for service worker updates...')
+        const registrations = await navigator.serviceWorker.getRegistrations()
+
+        for (const registration of registrations) {
+          console.log('🔍 Found service worker registration:', registration.scope)
+
+          // Unregister old service worker
+          await registration.unregister()
+          console.log('🗑️ Unregistered old service worker')
+        }
+
+        // Register new service worker
+        const newRegistration = await navigator.serviceWorker.register('/sw-custom.js', { scope: '/' })
+        console.log('✅ New service worker registered:', newRegistration.scope)
+
+        // Wait for it to be ready
+        await navigator.serviceWorker.ready
+        console.log('🎉 Service worker ready!')
+
+        // Refresh the page to ensure clean state
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+
+      } catch (error) {
+        console.error('❌ Error updating service worker:', error)
+      }
+    }
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Service Worker Status</h2>
+
+        <div className="space-y-4">
+          <button
+            onClick={updateServiceWorker}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            🔄 Force Service Worker Update
+          </button>
+
+          <div className="text-sm text-gray-600">
+            <p>Click this button to force update the service worker with notification support.</p>
+            <p>The page will reload automatically after the update.</p>
+          </div>
+        </div>
+      </div>
+
       {/* Debug Panel */}
       <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
         <div className="flex justify-between items-center mb-3">

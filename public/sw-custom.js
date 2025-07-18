@@ -1,1 +1,211 @@
-if(!self.define){let e,s={};const n=(n,i)=>(n=new URL(n+".js",i).href,s[n]||new Promise(s=>{if("document"in self){const e=document.createElement("script");e.src=n,e.onload=s,document.head.appendChild(e)}else e=n,importScripts(n),s()}).then(()=>{let e=s[n];if(!e)throw new Error(`Module ${n} didn’t register its module`);return e}));self.define=(i,c)=>{const a=e||("document"in self?document.currentScript.src:"")||location.href;if(s[a])return;let t={};const r=e=>n(e,a),o={module:{uri:a},exports:t,require:r};s[a]=Promise.all(i.map(e=>o[e]||r(e))).then(e=>(c(...e),t))}}define(["./workbox-4754cb34"],function(e){"use strict";importScripts(),self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"/_next/app-build-manifest.json",revision:"8b3d8c90fa049a8ff530881674c678ab"},{url:"/_next/static/axfBcEOX3Kr_eiUBsFBRf/_buildManifest.js",revision:"a1b7599199e2e8c82f2c6bcf8d8aca61"},{url:"/_next/static/axfBcEOX3Kr_eiUBsFBRf/_ssgManifest.js",revision:"b6652df95db52feb4daf4eca35380933"},{url:"/_next/static/chunks/426-cea4c7c12835357e.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/938-f464a3b2301c5ba9.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/app/_not-found-352713f74bf9de0e.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/app/jobs/page-5ec61d0ddae8246a.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/app/layout-fe8633f77a31055d.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/app/notifications/page-558e3e764a3f17b6.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/app/page-bd61d424cff3e503.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/app/profile/page-6c960ad860bc8b45.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/fd9d1056-516b58327fb05db5.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/framework-c5181c9431ddc45b.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/main-3d7c9e8eaf9c14f2.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/main-app-727f6232e071f40e.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/pages/_app-98cb51ec6f9f135f.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/pages/_error-e87e5963ec1b8011.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/chunks/polyfills-c67a75d1b6f99dc8.js",revision:"837c0df77fd5009c9e46d446188ecfd0"},{url:"/_next/static/chunks/webpack-0fefecc6c83b789d.js",revision:"axfBcEOX3Kr_eiUBsFBRf"},{url:"/_next/static/css/928d3334cdda8da9.css",revision:"928d3334cdda8da9"},{url:"/favicon.ico",revision:"a9061b7bda74190c1eec3288cc75f176"},{url:"/icon-128x128.png",revision:"566a4ce9f24b3673adf0dc009f8f1c35"},{url:"/icon-144x144.png",revision:"895cb15b45aeecf884576ccc909c74c2"},{url:"/icon-152x152.png",revision:"f56c82d82884591673fa142eb685db5f"},{url:"/icon-180x180.png",revision:"4c9ee94df909d5c3bb333c171e485f5c"},{url:"/icon-192x192-maskable.png",revision:"77afc6a250c007608b9513ea1f3a89b6"},{url:"/icon-192x192.png",revision:"604df9a6b3d5ae8faf39df78bff50fe6"},{url:"/icon-384x384.png",revision:"2d28c801ca9f1f7353348869e5d3098d"},{url:"/icon-512x512-maskable.png",revision:"248710be4335f27c859035fbacc5988a"},{url:"/icon-512x512.png",revision:"bb659b4827e208c1acee6449260c6af0"},{url:"/icon-72x72.png",revision:"d7c80449e48b39d8edbde23c493dbe66"},{url:"/icon-96x96.png",revision:"8f3a9918987371f29803706b31bb2b6d"},{url:"/icon.svg",revision:"4b081d898fb78fd80581142017070fae"},{url:"/manifest.json",revision:"9805e12f04b42ea94b7f1ab20cbe3f95"},{url:"/sw.js",revision:"b3bb2b31c93ba3f081880712f1944cc5"}],{ignoreURLParametersMatching:[]}),e.cleanupOutdatedCaches(),e.registerRoute("/",new e.NetworkFirst({cacheName:"start-url",plugins:[{cacheWillUpdate:async({request:e,response:s,event:n,state:i})=>s&&"opaqueredirect"===s.type?new Response(s.body,{status:200,statusText:"OK",headers:s.headers}):s}]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,new e.CacheFirst({cacheName:"google-fonts-webfonts",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:31536e3})]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:googleapis)\.com\/.*/i,new e.StaleWhileRevalidate({cacheName:"google-fonts-stylesheets",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:604800})]}),"GET"),e.registerRoute(/\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,new e.StaleWhileRevalidate({cacheName:"static-font-assets",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:604800})]}),"GET"),e.registerRoute(/\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,new e.StaleWhileRevalidate({cacheName:"static-image-assets",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\/_next\/image\?url=.+$/i,new e.StaleWhileRevalidate({cacheName:"next-image",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:mp3|wav|ogg)$/i,new e.CacheFirst({cacheName:"static-audio-assets",plugins:[new e.RangeRequestsPlugin,new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:mp4)$/i,new e.CacheFirst({cacheName:"static-video-assets",plugins:[new e.RangeRequestsPlugin,new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:js)$/i,new e.StaleWhileRevalidate({cacheName:"static-js-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:css|less)$/i,new e.StaleWhileRevalidate({cacheName:"static-style-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\/_next\/data\/.+\/.+\.json$/i,new e.StaleWhileRevalidate({cacheName:"next-data",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:json|xml|csv)$/i,new e.NetworkFirst({cacheName:"static-data-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({url:e})=>{if(!(self.origin===e.origin))return!1;const s=e.pathname;return!s.startsWith("/api/auth/")&&!!s.startsWith("/api/")},new e.NetworkFirst({cacheName:"apis",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:16,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({url:e})=>{if(!(self.origin===e.origin))return!1;return!e.pathname.startsWith("/api/")},new e.NetworkFirst({cacheName:"others",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({url:e})=>!(self.origin===e.origin),new e.NetworkFirst({cacheName:"cross-origin",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:3600})]}),"GET")});
+// Custom Service Worker for Job Seeker PWA
+// This service worker handles caching, offline functionality, and most importantly - notifications
+
+const CACHE_NAME = 'job-seeker-v1'
+const STATIC_CACHE_URLS = [
+  '/',
+  '/jobs',
+  '/profile',
+  '/notifications',
+  '/manifest.json',
+  '/icon-192x192.png',
+  '/icon-512x512.png'
+]
+
+// Install event - cache static assets
+self.addEventListener('install', (event) => {
+  console.log('🔧 Service Worker installing...')
+
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('📦 Caching static assets')
+        return cache.addAll(STATIC_CACHE_URLS)
+      })
+      .then(() => {
+        console.log('✅ Service Worker installed successfully')
+        return self.skipWaiting()
+      })
+      .catch((error) => {
+        console.error('❌ Service Worker installation failed:', error)
+      })
+  )
+})
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  console.log('🚀 Service Worker activating...')
+
+  event.waitUntil(
+    caches.keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              console.log('🗑️ Deleting old cache:', cacheName)
+              return caches.delete(cacheName)
+            }
+          })
+        )
+      })
+      .then(() => {
+        console.log('✅ Service Worker activated')
+        return self.clients.claim()
+      })
+  )
+})
+
+// Fetch event - serve from cache with network fallback
+self.addEventListener('fetch', (event) => {
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') {
+    return
+  }
+
+  // Skip Chrome extension requests
+  if (event.request.url.startsWith('chrome-extension://')) {
+    return
+  }
+
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        if (response) {
+          return response
+        }
+
+        return fetch(event.request)
+          .then((response) => {
+            // Don't cache non-successful responses
+            if (!response || response.status !== 200 || response.type !== 'basic') {
+              return response
+            }
+
+            // Clone response for caching
+            const responseToCache = response.clone()
+
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache)
+              })
+
+            return response
+          })
+      })
+      .catch(() => {
+        // Return offline page for navigation requests
+        if (event.request.destination === 'document') {
+          return caches.match('/')
+        }
+      })
+  )
+})
+
+// ✨ NOTIFICATION HANDLING - This is the key missing piece! ✨
+self.addEventListener('message', (event) => {
+  console.log('📨 Service Worker received message:', event.data)
+
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('⏭️ Skipping waiting phase...')
+    self.skipWaiting()
+    return
+  }
+
+  if (event.data && event.data.type === 'show-notification') {
+    console.log('🔔 Showing notification:', event.data.title, event.data.options)
+
+    // Show the notification
+    self.registration.showNotification(event.data.title, event.data.options)
+      .then(() => {
+        console.log('✅ Notification shown successfully')
+        // Send success response back to client
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: true })
+        }
+      })
+      .catch((error) => {
+        console.error('❌ Error showing notification:', error)
+        // Send error response back to client
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: false, error: error.message })
+        }
+      })
+  }
+})
+
+// Handle notification clicks
+self.addEventListener('notificationclick', (event) => {
+  console.log('👆 Notification clicked:', event.notification)
+
+  // Close the notification
+  event.notification.close()
+
+  // Get redirect URL from notification data
+  const redirectUrl = event.notification.data?.redirectUrl || '/'
+
+  // Focus or open the app
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // If app is already open, focus it and navigate
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin)) {
+            console.log('🔍 Found existing client, focusing and navigating')
+            client.focus()
+            client.navigate(redirectUrl)
+            return
+          }
+        }
+
+        // If app is not open, open it
+        console.log('🚀 Opening new client window')
+        return clients.openWindow(redirectUrl)
+      })
+      .catch((error) => {
+        console.error('❌ Error handling notification click:', error)
+      })
+  )
+})
+
+// Handle notification close
+self.addEventListener('notificationclose', (event) => {
+  console.log('❌ Notification closed:', event.notification)
+})
+
+// Handle push events (for server-sent notifications)
+self.addEventListener('push', (event) => {
+  console.log('📨 Push message received:', event)
+
+  if (event.data) {
+    try {
+      const data = event.data.json()
+
+      const options = {
+        body: data.body || 'You have a new notification',
+        icon: data.icon || '/icon-192x192.png',
+        badge: '/icon-192x192.png',
+        tag: data.tag || 'push-notification',
+        data: data.data || {},
+        requireInteraction: data.requireInteraction || true,
+        actions: data.actions || []
+      }
+
+      event.waitUntil(
+        self.registration.showNotification(data.title || 'Job Seeker', options)
+      )
+    } catch (error) {
+      console.error('❌ Error parsing push data:', error)
+
+      // Show generic notification if parsing fails
+      event.waitUntil(
+        self.registration.showNotification('Job Seeker', {
+          body: 'You have a new notification',
+          icon: '/icon-192x192.png',
+          badge: '/icon-192x192.png'
+        })
+      )
+    }
+  }
+})
+
+console.log('🚀 Custom Service Worker loaded and ready!')
