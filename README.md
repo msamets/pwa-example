@@ -9,6 +9,23 @@ A modern Progressive Web App (PWA) built with Next.js, React, and TypeScript for
 - ⚡ **Lightning Fast**: Built with Next.js for optimal performance
 - 📦 **Installable**: Can be installed on devices like a native app
 - 🎨 **Modern UI**: Beautiful interface built with Tailwind CSS
+- 🔔 **Push Notifications**: Full notification support including iOS Safari
+- 🍎 **iOS Compatible**: Works seamlessly on iPhone with proper PWA installation
+
+## iOS Notification Support
+
+This PWA includes full support for notifications on iOS Safari:
+
+### Requirements
+- iOS 16.4 or later
+- Must be installed to home screen (PWA requirement)
+- User must grant notification permissions
+
+### How it works
+1. **Detection**: Automatically detects iOS devices and shows installation prompts
+2. **Installation**: Guides users through the "Add to Home Screen" process
+3. **Permissions**: Requests notification permissions after installation
+4. **Testing**: Includes comprehensive debugging tools
 
 ## Getting Started
 
@@ -44,6 +61,31 @@ npm run build
 npm start
 ```
 
+## Deployment
+
+### Vercel Deployment
+
+This project is optimized for Vercel deployment:
+
+1. Connect your repository to Vercel
+2. Vercel will automatically detect Next.js and use the correct build settings
+3. The app includes `.vercelignore` and `vercel.json` for optimal deployment
+
+#### Troubleshooting Vercel Deployment
+
+If you encounter build trace collection errors:
+1. Make sure `sharp` is in `devDependencies` (not dependencies)
+2. The `scripts/` directory is excluded via `.vercelignore`
+3. PWA configuration is optimized for serverless deployment
+
+### Other Platforms
+
+The app can be deployed to any platform that supports Next.js:
+- Netlify
+- Railway
+- Digital Ocean App Platform
+- Self-hosted with PM2
+
 ## PWA Features
 
 This app includes:
@@ -52,6 +94,8 @@ This app includes:
 - **Service Worker**: Enables offline functionality and caching
 - **Responsive Design**: Works on all screen sizes
 - **Fast Loading**: Optimized for performance
+- **Push Notifications**: Cross-platform notification support
+- **iOS Compatibility**: Special handling for iOS Safari limitations
 
 ## Technology Stack
 
@@ -59,42 +103,73 @@ This app includes:
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **PWA**: next-pwa plugin
-- **Icons**: Custom icon set
+- **Icons**: Custom icon set with maskable support
+- **Notifications**: Custom notification manager with iOS support
 
 ## Project Structure
 
 ```
 job-seeker-pwa/
-├── app/                 # Next.js 13+ App Router
-│   ├── globals.css     # Global styles
-│   ├── layout.tsx      # Root layout
-│   └── page.tsx        # Home page
-├── public/             # Static assets
-│   ├── manifest.json   # PWA manifest
-│   └── icons/          # App icons
-├── next.config.js      # Next.js configuration
-├── tailwind.config.js  # Tailwind CSS configuration
-└── tsconfig.json       # TypeScript configuration
+├── app/                     # Next.js 13+ App Router
+│   ├── components/          # React components
+│   │   ├── IOSDebugInfo.tsx        # iOS debugging component
+│   │   ├── IOSInstallPrompt.tsx    # iOS install prompt
+│   │   ├── NotificationPermission.tsx  # Permission management
+│   │   └── NotificationTest.tsx    # Notification testing
+│   ├── utils/              # Utility functions
+│   │   └── notifications.ts # Notification manager
+│   ├── globals.css         # Global styles
+│   ├── layout.tsx          # Root layout
+│   └── page.tsx            # Home page
+├── public/                 # Static assets
+│   ├── manifest.json       # PWA manifest
+│   ├── sw-custom.js        # Custom service worker
+│   └── icon-*.png          # App icons (various sizes)
+├── scripts/                # Build scripts (excluded from deployment)
+├── next.config.js          # Next.js configuration
+├── tailwind.config.js      # Tailwind CSS configuration
+├── vercel.json             # Vercel deployment config
+└── tsconfig.json           # TypeScript configuration
 ```
 
-## Adding Icons
+## Testing Notifications
 
-To replace the placeholder icons, add PNG files to the `public/` directory with the following sizes:
-- icon-72x72.png
-- icon-96x96.png
-- icon-128x128.png
-- icon-144x144.png
-- icon-152x152.png
-- icon-192x192.png
-- icon-384x384.png
-- icon-512x512.png
+### Desktop Testing
+1. Open the app in Chrome/Firefox/Safari
+2. Go to `/notifications` page
+3. Enable permissions and test different notification types
+
+### iOS Testing
+1. Open in Safari on iPhone (iOS 16.4+)
+2. Install to home screen via share menu
+3. Open from home screen icon
+4. Navigate to notifications page
+5. Enable permissions and test
+
+### Debug Information
+- The app includes comprehensive debugging tools
+- Check browser console for detailed logs
+- Use the debug panels in the notification components
+
+## Icon Generation
+
+The app includes scripts to generate icons from SVG:
+
+```bash
+# Generate regular icons
+node scripts/generate-icons.js
+
+# Generate maskable icons (with padding)
+node scripts/generate-maskable-icons.js
+```
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Submit a pull request
+4. Test on both desktop and mobile
+5. Submit a pull request
 
 ## License
 
