@@ -6,6 +6,7 @@ export default function TestBackgroundPage() {
   const [testStep, setTestStep] = useState(0)
   const [lastNotification, setLastNotification] = useState('')
   const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   const testSteps = [
     'Install the PWA to your home screen (if not already done)',
@@ -16,11 +17,15 @@ export default function TestBackgroundPage() {
     'You should receive a notification!'
   ]
 
+  // Handle SSR by ensuring we're on the client side
   useEffect(() => {
+    setIsClient(true)
     gatherDebugInfo()
   }, [])
 
   const gatherDebugInfo = async () => {
+    if (typeof window === 'undefined') return
+
     const info = {
       notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'undefined',
       isInstalled: window.matchMedia('(display-mode: standalone)').matches,
@@ -28,7 +33,8 @@ export default function TestBackgroundPage() {
       serviceWorkerReady: false,
       backgroundSyncSupported: false,
       periodicSyncSupported: false,
-      userAgent: navigator.userAgent
+      userAgent: navigator.userAgent,
+      isSecure: window.location.protocol === 'https:' || window.location.hostname === 'localhost'
     }
 
     if ('serviceWorker' in navigator) {
@@ -46,38 +52,62 @@ export default function TestBackgroundPage() {
   }
 
   const testNotification = async () => {
-    if ('serviceWorker' in navigator) {
-      try {
-        const registration = await navigator.serviceWorker.ready
-        await registration.showNotification('Test Background Notification', {
-          body: 'If you see this while the app is hidden, background notifications are working!',
-          icon: '/icon-192x192.png',
-          requireInteraction: true,
-          tag: 'background-test'
-        })
-        setLastNotification('Test notification sent!')
-      } catch (error) {
-        setLastNotification(`Error: ${error}`)
-      }
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      setLastNotification('Service Worker not available')
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+      await registration.showNotification('Test Background Notification', {
+        body: 'If you see this while the app is hidden, background notifications are working!',
+        icon: '/icon-192x192.png',
+        requireInteraction: true,
+        tag: 'background-test'
+      })
+      setLastNotification('Test notification sent!')
+    } catch (error) {
+      setLastNotification(`Error: ${error}`)
     }
   }
 
   const requestPermission = async () => {
-    if ('Notification' in window) {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setLastNotification('Notifications not supported')
+      return
+    }
+
+    try {
       const permission = await Notification.requestPermission()
       setLastNotification(`Permission: ${permission}`)
       gatherDebugInfo()
+    } catch (error) {
+      setLastNotification(`Permission error: ${error}`)
     }
   }
 
   const isStepComplete = (step: number) => {
-    if (!debugInfo) return false
+    if (!debugInfo || !isClient) return false
 
     switch (step) {
       case 0: return debugInfo.isInstalled
       case 1: return debugInfo.notificationPermission === 'granted'
       default: return false
     }
+  }
+
+  // Don't render until we're on the client side
+  if (!isClient) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">Background Notification Test</h1>
+          <div className="text-center py-8">
+            <div className="animate-pulse">Loading...</div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -186,8 +216,8 @@ export default function TestBackgroundPage() {
                 </div>
                 <div>
                   <span className="font-medium">HTTPS:</span>
-                  <span className={`ml-2 ${window.location.protocol === 'https:' || window.location.hostname === 'localhost' ? 'text-green-600' : 'text-red-600'}`}>
-                    {window.location.protocol === 'https:' || window.location.hostname === 'localhost' ? 'Yes' : 'No'}
+                  <span className={`ml-2 ${debugInfo.isSecure ? 'text-green-600' : 'text-red-600'}`}>
+                    {debugInfo.isSecure ? 'Yes' : 'No'}
                   </span>
                 </div>
               </div>
@@ -200,94 +230,96 @@ export default function TestBackgroundPage() {
         )}
 
         {/* Troubleshooting Section */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-4">Troubleshooting Background Notifications:</h2>
-          <div className="space-y-4">
-            {/* HTTPS Check */}
-            <div className={`p-4 rounded-lg border ${
-              (window.location.protocol === 'https:' || window.location.hostname === 'localhost')
-                ? 'bg-green-50 border-green-200'
-                : 'bg-red-50 border-red-200'
-            }`}>
-              <h3 className="font-medium mb-2">
-                {(window.location.protocol === 'https:' || window.location.hostname === 'localhost') ? '✅' : '❌'}
-                {' '}HTTPS Required
-              </h3>
-              <p className="text-sm text-gray-700">
-                {(window.location.protocol === 'https:' || window.location.hostname === 'localhost')
-                  ? 'Site is served over HTTPS - Background Sync can work!'
-                  : 'Background Sync requires HTTPS. Please use https:// or serve from localhost for development.'
-                }
-              </p>
-            </div>
+        {debugInfo && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4">Troubleshooting Background Notifications:</h2>
+            <div className="space-y-4">
+              {/* HTTPS Check */}
+              <div className={`p-4 rounded-lg border ${
+                debugInfo.isSecure
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200'
+              }`}>
+                <h3 className="font-medium mb-2">
+                  {debugInfo.isSecure ? '✅' : '❌'}
+                  {' '}HTTPS Required
+                </h3>
+                <p className="text-sm text-gray-700">
+                  {debugInfo.isSecure
+                    ? 'Site is served over HTTPS - Background Sync can work!'
+                    : 'Background Sync requires HTTPS. Please use https:// or serve from localhost for development.'
+                  }
+                </p>
+              </div>
 
-            {/* PWA Installation Check */}
-            <div className={`p-4 rounded-lg border ${
-              debugInfo?.isInstalled
-                ? 'bg-green-50 border-green-200'
-                : 'bg-yellow-50 border-yellow-200'
-            }`}>
-              <h3 className="font-medium mb-2">
-                {debugInfo?.isInstalled ? '✅' : '⚠️'}
-                {' '}PWA Installation
-              </h3>
-              <p className="text-sm text-gray-700 mb-2">
-                {debugInfo?.isInstalled
-                  ? 'PWA is installed to home screen - Background Sync should work!'
-                  : 'PWA may not be installed. Background Sync often requires the app to be installed to the home screen.'
-                }
-              </p>
-              {!debugInfo?.isInstalled && (
-                <div className="text-xs text-gray-600">
-                  <strong>To install:</strong>
-                  <ul className="list-disc list-inside mt-1">
-                    <li><strong>Chrome/Edge:</strong> Click the install button in the address bar or browser menu</li>
-                    <li><strong>Safari iOS:</strong> Tap Share → Add to Home Screen</li>
-                    <li><strong>Firefox:</strong> Look for "Install" option in the menu</li>
+              {/* PWA Installation Check */}
+              <div className={`p-4 rounded-lg border ${
+                debugInfo.isInstalled
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}>
+                <h3 className="font-medium mb-2">
+                  {debugInfo.isInstalled ? '✅' : '⚠️'}
+                  {' '}PWA Installation
+                </h3>
+                <p className="text-sm text-gray-700 mb-2">
+                  {debugInfo.isInstalled
+                    ? 'PWA is installed to home screen - Background Sync should work!'
+                    : 'PWA may not be installed. Background Sync often requires the app to be installed to the home screen.'
+                  }
+                </p>
+                {!debugInfo.isInstalled && (
+                  <div className="text-xs text-gray-600">
+                    <strong>To install:</strong>
+                    <ul className="list-disc list-inside mt-1">
+                      <li><strong>Chrome/Edge:</strong> Click the install button in the address bar or browser menu</li>
+                      <li><strong>Safari iOS:</strong> Tap Share → Add to Home Screen</li>
+                      <li><strong>Firefox:</strong> Look for "Install" option in the menu</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Background Sync Support */}
+              <div className={`p-4 rounded-lg border ${
+                debugInfo.backgroundSyncSupported
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200'
+              }`}>
+                <h3 className="font-medium mb-2">
+                  {debugInfo.backgroundSyncSupported ? '✅' : '❌'}
+                  {' '}Background Sync API
+                </h3>
+                <p className="text-sm text-gray-700">
+                  {debugInfo.backgroundSyncSupported
+                    ? 'Background Sync API is supported by your browser!'
+                    : 'Background Sync API is not supported by your browser. The app will use fallback methods (which may be throttled).'
+                  }
+                </p>
+                {!debugInfo.backgroundSyncSupported && (
+                  <div className="text-xs text-gray-600 mt-2">
+                    <strong>Browsers with Background Sync support:</strong> Chrome, Edge, Opera
+                  </div>
+                )}
+              </div>
+
+              {/* Permission Issues */}
+              <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
+                <h3 className="font-medium mb-2">🔒 If you see "Permission denied" errors:</h3>
+                <div className="text-sm text-gray-700 space-y-1">
+                  <p><strong>Most common causes:</strong></p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>App is not installed to home screen (install it first)</li>
+                    <li>Browser has background sync disabled in settings</li>
+                    <li>Site is not served over HTTPS</li>
+                    <li>Browser doesn't support Background Sync API</li>
                   </ul>
+                  <p className="mt-2"><strong>Solution:</strong> The app will automatically fall back to alternative notification methods that work without Background Sync permissions.</p>
                 </div>
-              )}
-            </div>
-
-            {/* Background Sync Support */}
-            <div className={`p-4 rounded-lg border ${
-              debugInfo?.backgroundSyncSupported
-                ? 'bg-green-50 border-green-200'
-                : 'bg-red-50 border-red-200'
-            }`}>
-              <h3 className="font-medium mb-2">
-                {debugInfo?.backgroundSyncSupported ? '✅' : '❌'}
-                {' '}Background Sync API
-              </h3>
-              <p className="text-sm text-gray-700">
-                {debugInfo?.backgroundSyncSupported
-                  ? 'Background Sync API is supported by your browser!'
-                  : 'Background Sync API is not supported by your browser. The app will use fallback methods (which may be throttled).'
-                }
-              </p>
-              {!debugInfo?.backgroundSyncSupported && (
-                <div className="text-xs text-gray-600 mt-2">
-                  <strong>Browsers with Background Sync support:</strong> Chrome, Edge, Opera
-                </div>
-              )}
-            </div>
-
-            {/* Permission Issues */}
-            <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
-              <h3 className="font-medium mb-2">🔒 If you see "Permission denied" errors:</h3>
-              <div className="text-sm text-gray-700 space-y-1">
-                <p><strong>Most common causes:</strong></p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>App is not installed to home screen (install it first)</li>
-                  <li>Browser has background sync disabled in settings</li>
-                  <li>Site is not served over HTTPS</li>
-                  <li>Browser doesn't support Background Sync API</li>
-                </ul>
-                <p className="mt-2"><strong>Solution:</strong> The app will automatically fall back to alternative notification methods that work without Background Sync permissions.</p>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Status Messages */}
         {lastNotification && (
