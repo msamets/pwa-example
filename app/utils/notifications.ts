@@ -22,6 +22,14 @@ export function getIOSInfo() {
   const match = userAgent.match(/os (\d+)_(\d+)_?(\d+)?/)
   const version = match ? `${match[1]}.${match[2]}` : null
 
+  console.log('🔍 iOS Info:', {
+    isIOS,
+    isStandalone,
+    version,
+    userAgent: userAgent.substring(0, 100) + '...',
+    supportsNotifications: isIOS && isStandalone && version && parseFloat(version) >= 16.4
+  })
+
   return {
     isIOS,
     isStandalone,
@@ -33,30 +41,44 @@ export function getIOSInfo() {
 export class NotificationManager {
   static async checkPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
+      console.error('❌ Notifications not supported in this browser')
       throw new Error('Notifications not supported')
     }
-    return Notification.permission
+
+    const permission = Notification.permission
+    console.log('🔔 Current notification permission:', permission)
+    return permission
   }
 
   static async requestPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
+      console.error('❌ Notifications not supported in this browser')
       throw new Error('Notifications not supported')
     }
-    return await Notification.requestPermission()
+
+    console.log('📱 Requesting notification permission...')
+    const permission = await Notification.requestPermission()
+    console.log('📱 Permission result:', permission)
+    return permission
   }
 
   static async ensurePermission(): Promise<boolean> {
     const permission = await this.checkPermission()
 
     if (permission === 'granted') {
+      console.log('✅ Permission already granted')
       return true
     }
 
     if (permission === 'default') {
+      console.log('⏳ Requesting permission...')
       const newPermission = await this.requestPermission()
-      return newPermission === 'granted'
+      const granted = newPermission === 'granted'
+      console.log(granted ? '✅ Permission granted!' : '❌ Permission denied')
+      return granted
     }
 
+    console.log('❌ Permission denied')
     return false
   }
 
@@ -67,11 +89,15 @@ export class NotificationManager {
   }> {
     const iosInfo = getIOSInfo()
 
+    console.log('🔍 Checking iOS compatibility...', iosInfo)
+
     if (!iosInfo.isIOS) {
+      console.log('✅ Not iOS - notifications should work normally')
       return { canUseNotifications: true }
     }
 
     if (!iosInfo.isStandalone) {
+      console.log('❌ iOS app not installed to home screen')
       return {
         canUseNotifications: false,
         reason: 'App must be installed to home screen',
@@ -85,6 +111,7 @@ export class NotificationManager {
     }
 
     if (!iosInfo.supportsNotifications) {
+      console.log('❌ iOS version too old or other compatibility issue')
       return {
         canUseNotifications: false,
         reason: 'iOS 16.4 or later required',
@@ -92,6 +119,7 @@ export class NotificationManager {
       }
     }
 
+    console.log('✅ iOS compatibility check passed')
     return { canUseNotifications: true }
   }
 
@@ -101,9 +129,12 @@ export class NotificationManager {
     error?: string,
     needsInstall?: boolean
   }> {
+    console.log('🚀 Starting iOS-compatible permission flow...')
+
     const iosCheck = await this.checkIOSCompatibility()
 
     if (!iosCheck.canUseNotifications) {
+      console.log('❌ iOS compatibility check failed:', iosCheck.reason)
       return {
         success: false,
         error: iosCheck.reason,
@@ -112,12 +143,18 @@ export class NotificationManager {
     }
 
     try {
+      console.log('🔄 Attempting to ensure permissions...')
       const hasPermission = await this.ensurePermission()
+      const permission = await this.checkPermission()
+
+      console.log('📊 Permission flow result:', { hasPermission, permission })
+
       return {
         success: hasPermission,
-        permission: await this.checkPermission()
+        permission: permission
       }
     } catch (error) {
+      console.error('💥 Error in permission flow:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -126,41 +163,66 @@ export class NotificationManager {
   }
 
   static async sendNotification(data: NotificationData): Promise<Notification | null> {
+    console.log('📤 Sending notification:', data)
+
     const hasPermission = await this.ensurePermission()
 
     if (!hasPermission) {
-      console.warn('Notification permission not granted')
+      console.warn('⚠️ Notification permission not granted')
       return null
     }
 
     const options: NotificationOptions = {
       body: data.body,
-      icon: data.icon || '/icon.svg',
-      badge: data.badge || '/icon.svg',
+      icon: data.icon || '/icon-192x192.png',
+      badge: data.badge || '/icon-192x192.png',
       tag: data.tag,
       data: data.data,
       requireInteraction: data.requireInteraction,
       silent: data.silent,
     }
 
-    const notification = new Notification(data.title, options)
+    console.log('📱 Creating notification with options:', options)
 
-    // Auto-close after 5 seconds unless requireInteraction is true
-    if (!data.requireInteraction) {
-      setTimeout(() => {
+    try {
+      const notification = new Notification(data.title, options)
+
+      console.log('✅ Notification created successfully')
+
+      // Auto-close after 5 seconds unless requireInteraction is true
+      if (!data.requireInteraction) {
+        setTimeout(() => {
+          console.log('⏰ Auto-closing notification')
+          notification.close()
+        }, 5000)
+      }
+
+      // Add click handler
+      notification.onclick = () => {
+        console.log('👆 Notification clicked')
+        window.focus()
+        if (data.data?.redirectUrl) {
+          window.location.href = data.data.redirectUrl
+        }
         notification.close()
-      }, 5000)
-    }
+      }
 
-    return notification
+      return notification
+    } catch (error) {
+      console.error('💥 Error creating notification:', error)
+      return null
+    }
   }
 
   // iOS-optimized notification method
   static async sendIOSOptimizedNotification(data: NotificationData): Promise<Notification | null> {
     const iosInfo = getIOSInfo()
 
+    console.log('🍎 Sending iOS-optimized notification...', iosInfo)
+
     // On iOS, simplify the notification options due to limited support
     if (iosInfo.isIOS && iosInfo.isStandalone) {
+      console.log('📱 Using iOS-optimized settings')
       const simplifiedData: NotificationData = {
         title: data.title,
         body: data.body,
@@ -168,18 +230,20 @@ export class NotificationManager {
         tag: undefined, // iOS doesn't support updating notifications
         requireInteraction: true, // Always require interaction on iOS
         silent: false, // iOS doesn't support silent notifications reliably
-        data: data.data
+        data: data.data,
+        icon: '/icon-192x192.png' // Use PNG icon for iOS
       }
       return this.sendNotification(simplifiedData)
     }
 
     // Use full features on other platforms
+    console.log('🖥️ Using full-featured notification')
     return this.sendNotification(data)
   }
 
   // Pre-defined notification types for job seeker app with redirect URLs
   static async sendJobAlert(jobTitle: string, company: string, salary?: string, jobId?: number): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'New Job Match! 💼',
       body: `${jobTitle} at ${company}${salary ? ` - ${salary}` : ''}`,
       tag: 'job-alert',
@@ -196,7 +260,7 @@ export class NotificationManager {
   }
 
   static async sendInterviewReminder(company: string, timeLeft: string, appId?: number): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Interview Reminder 📅',
       body: `Your interview with ${company} is ${timeLeft}`,
       tag: 'interview-reminder',
@@ -212,7 +276,7 @@ export class NotificationManager {
   }
 
   static async sendInterviewScheduled(company: string, jobTitle: string, dateTime: string, appId?: number): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Interview Scheduled! 📅',
       body: `Interview for ${jobTitle} at ${company} on ${dateTime}`,
       tag: 'interview-scheduled',
@@ -232,7 +296,7 @@ export class NotificationManager {
     const statusEmoji = status.toLowerCase().includes('accepted') ? '🎉' :
                        status.toLowerCase().includes('rejected') ? '📄' : '📋'
 
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: `Application Update ${statusEmoji}`,
       body: `Your application with ${company} has been ${status}`,
       tag: 'application-update',
@@ -247,7 +311,7 @@ export class NotificationManager {
   }
 
   static async sendJobOffer(company: string, jobTitle: string, appId?: number): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Job Offer Received! 🎉',
       body: `Congratulations! You received an offer for ${jobTitle} from ${company}`,
       tag: 'job-offer',
@@ -263,7 +327,7 @@ export class NotificationManager {
   }
 
   static async sendWelcomeNotification(): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Welcome to Job Seeker! 🎉',
       body: 'You will now receive job alerts and important updates.',
       tag: 'welcome',
@@ -275,7 +339,7 @@ export class NotificationManager {
   }
 
   static async sendWelcomeBackNotification(): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Welcome Back! 🏠',
       body: 'Check out new job matches we found for you',
       tag: 'welcome-back',
@@ -287,7 +351,7 @@ export class NotificationManager {
   }
 
   static async sendNotificationSettingsReminder(): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Notification Settings 🔔',
       body: 'Manage your notification preferences',
       tag: 'notification-settings',
@@ -299,7 +363,7 @@ export class NotificationManager {
   }
 
   static async sendTestNotification(): Promise<Notification | null> {
-    return this.sendNotification({
+    return this.sendIOSOptimizedNotification({
       title: 'Test Notification 🧪',
       body: 'This is a test notification to verify everything is working.',
       tag: 'test',
@@ -335,10 +399,10 @@ export async function send10SecondDelayedNotification(
   body: string = 'Perfect timing! This notification appeared after 10 seconds.',
   redirectUrl: string = '/notifications?from=notification&test=10s-delay'
 ): Promise<void> {
-  console.log('10-second delayed notification scheduled...')
+  console.log('⏰ 10-second delayed notification scheduled...')
 
   setTimeout(async () => {
-    const notification = await NotificationManager.sendNotification({
+    const notification = await NotificationManager.sendIOSOptimizedNotification({
       title,
       body,
       tag: 'delayed-10s',
@@ -392,7 +456,7 @@ export function getNotificationFeatures() {
     return { supported: false }
   }
 
-  return {
+  const features = {
     supported: true,
     actions: 'actions' in Notification.prototype,
     badge: 'badge' in Notification.prototype,
@@ -404,6 +468,9 @@ export function getNotificationFeatures() {
     tag: 'tag' in Notification.prototype,
     vibrate: 'vibrate' in Notification.prototype,
   }
+
+  console.log('🔍 Notification features:', features)
+  return features
 }
 
 // Utility to create notifications with automatic click-to-redirect
@@ -413,7 +480,7 @@ export async function createRedirectNotification(
   redirectUrl: string,
   options: Partial<NotificationData> = {}
 ): Promise<Notification | null> {
-  const notification = await NotificationManager.sendNotification({
+  const notification = await NotificationManager.sendIOSOptimizedNotification({
     title,
     body,
     ...options,

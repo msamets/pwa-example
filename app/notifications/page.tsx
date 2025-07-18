@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react'
 import NotificationPermission from '../components/NotificationPermission'
 import NotificationTest from '../components/NotificationTest'
+import IOSDebugInfo from '../components/IOSDebugInfo'
+import { getIOSInfo } from '../utils/notifications'
 
 export default function NotificationsPage() {
   const [permission, setPermission] = useState<NotificationPermission>('default')
   const [isSupported, setIsSupported] = useState(false)
+  const [showIOSDebug, setShowIOSDebug] = useState(false)
 
   useEffect(() => {
     // Check if notifications are supported
@@ -15,6 +18,10 @@ export default function NotificationsPage() {
     if ('Notification' in window) {
       setPermission(Notification.permission)
     }
+
+    // Show iOS debug by default on iOS devices
+    const iosInfo = getIOSInfo()
+    setShowIOSDebug(iosInfo.isIOS)
   }, [])
 
   const handlePermissionChange = (newPermission: NotificationPermission) => {
@@ -31,6 +38,34 @@ export default function NotificationsPage() {
           Test and manage push notifications for your PWA
         </p>
       </div>
+
+      {/* iOS Debug Section */}
+      {showIOSDebug && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold text-gray-900">🍎 iOS Troubleshooting</h2>
+            <button
+              onClick={() => setShowIOSDebug(!showIOSDebug)}
+              className="px-3 py-1 bg-gray-500 text-white rounded text-sm"
+            >
+              Hide Debug
+            </button>
+          </div>
+          <IOSDebugInfo />
+        </div>
+      )}
+
+      {/* Show debug toggle for non-iOS devices */}
+      {!showIOSDebug && (
+        <div className="text-center">
+          <button
+            onClick={() => setShowIOSDebug(true)}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+          >
+            🔍 Show Debug Info
+          </button>
+        </div>
+      )}
 
       {/* Support Check */}
       <div className={`rounded-lg p-6 ${isSupported ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>

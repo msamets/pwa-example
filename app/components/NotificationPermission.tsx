@@ -15,12 +15,21 @@ export default function NotificationPermission({
   const [isRequesting, setIsRequesting] = useState(false)
   const [iosInfo, setIOSInfo] = useState<any>(null)
   const [compatibilityCheck, setCompatibilityCheck] = useState<any>(null)
+  const [debugMode, setDebugMode] = useState(false)
 
   useEffect(() => {
-    const info = getIOSInfo()
-    setIOSInfo(info)
+    // Only run iOS detection on the client side
+    if (typeof window !== 'undefined') {
+      const info = getIOSInfo()
+      setIOSInfo(info)
 
-    NotificationManager.checkIOSCompatibility().then(setCompatibilityCheck)
+      console.log('🔍 NotificationPermission iOS Info:', info)
+
+      NotificationManager.checkIOSCompatibility().then(compatibility => {
+        setCompatibilityCheck(compatibility)
+        console.log('🔍 NotificationPermission Compatibility:', compatibility)
+      })
+    }
   }, [])
 
   const requestPermission = async () => {
@@ -47,7 +56,7 @@ export default function NotificationPermission({
           alert(`Cannot enable notifications: ${result.error}`)
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error requesting notification permission:', error)
       alert('Error requesting notification permission. Please try again.')
     } finally {
@@ -93,13 +102,56 @@ Or:
     alert(instructions)
   }
 
+  // Don't render anything until iOS info is loaded
+  if (!iosInfo) {
+    return <div className="text-gray-500">Loading...</div>
+  }
+
   const { title, message, action } = getPermissionMessage()
 
-  // Show iOS-specific guidance if needed
-  if (iosInfo?.isIOS && !iosInfo?.isStandalone) {
+  // Show iOS-specific guidance ONLY if we're actually on an iOS device
+  const isActuallyIOS = iosInfo.isIOS === true
+  const needsInstallation = isActuallyIOS && !iosInfo.isStandalone
+
+  console.log('🔍 iOS Check:', {
+    isActuallyIOS,
+    needsInstallation,
+    iosInfo,
+    userAgent: typeof window !== 'undefined' ? navigator.userAgent.substring(0, 50) : 'N/A'
+  })
+
+  if (needsInstallation) {
     return (
       <div className="mt-4 p-4 border rounded-lg bg-blue-50 border-blue-200">
-        <h4 className="font-medium text-blue-900 mb-2">📱 iPhone Setup Required</h4>
+        <div className="flex justify-between items-start mb-2">
+          <h4 className="font-medium text-blue-900">📱 iPhone Setup Required</h4>
+          {debugMode && (
+            <button
+              onClick={() => setDebugMode(false)}
+              className="text-xs text-blue-600 underline"
+            >
+              Hide Debug
+            </button>
+          )}
+          {!debugMode && (
+            <button
+              onClick={() => setDebugMode(true)}
+              className="text-xs text-blue-600 underline"
+            >
+              Debug
+            </button>
+          )}
+        </div>
+
+        {debugMode && (
+          <div className="mb-4 p-2 bg-gray-900 text-green-400 rounded text-xs font-mono">
+            <div>isIOS: {String(iosInfo.isIOS)}</div>
+            <div>isStandalone: {String(iosInfo.isStandalone)}</div>
+            <div>version: {iosInfo.version || 'unknown'}</div>
+            <div>UA: {typeof window !== 'undefined' ? navigator.userAgent.substring(0, 100) : 'N/A'}</div>
+          </div>
+        )}
+
         <p className="text-blue-800 mb-4">
           To receive notifications on iPhone, you need to install this app to your home screen first.
         </p>
@@ -125,7 +177,7 @@ Or:
   }
 
   // Show compatibility warning if iOS version too old
-  if (iosInfo?.isIOS && !compatibilityCheck?.canUseNotifications && compatibilityCheck?.reason?.includes('16.4')) {
+  if (isActuallyIOS && !compatibilityCheck?.canUseNotifications && compatibilityCheck?.reason?.includes('16.4')) {
     return (
       <div className="mt-4 p-4 border rounded-lg bg-orange-50 border-orange-200">
         <h4 className="font-medium text-orange-900 mb-2">⚠️ iOS Update Required</h4>

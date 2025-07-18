@@ -6,11 +6,33 @@ export default function IOSInstallPrompt() {
   const [isIOS, setIsIOS] = useState(false)
   const [isInstalled, setIsInstalled] = useState(false)
   const [showPrompt, setShowPrompt] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
+  const [userAgent, setUserAgent] = useState('')
 
   useEffect(() => {
-    // Detect iOS
-    const userAgent = window.navigator.userAgent.toLowerCase()
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent)
+    // Only run on client side
+    if (typeof window === 'undefined') return
+
+    // Detect iOS with more specific checks
+    const ua = window.navigator.userAgent.toLowerCase()
+    setUserAgent(ua)
+
+        // More specific iOS detection
+    const isIOSDevice = /iphone|ipad|ipod/.test(ua) &&
+                       !(window as any).MSStream && // Exclude Windows phones
+                       !/windows phone/i.test(ua) && // Exclude Windows phones
+                       !/android/i.test(ua) // Exclude Android
+
+    console.log('🔍 IOSInstallPrompt Detection:', {
+      userAgent: ua.substring(0, 100),
+      isIOSDevice,
+      hasIphone: /iphone/.test(ua),
+      hasIpad: /ipad/.test(ua),
+      hasIpod: /ipod/.test(ua),
+      hasAndroid: /android/i.test(ua),
+      hasWindows: /windows/i.test(ua)
+    })
+
     setIsIOS(isIOSDevice)
 
     // Check if already installed as PWA
@@ -18,12 +40,17 @@ export default function IOSInstallPrompt() {
                         (window.navigator as any).standalone === true
     setIsInstalled(isStandalone)
 
-    // Show prompt if iOS and not installed
+    // Show prompt ONLY if iOS and not installed
     if (isIOSDevice && !isStandalone) {
+      console.log('✅ Showing iOS install prompt')
       setShowPrompt(true)
+    } else {
+      console.log('❌ Not showing iOS install prompt:', { isIOSDevice, isStandalone })
+      setShowPrompt(false)
     }
   }, [])
 
+  // Don't show if not iOS, already installed, or user dismissed
   if (!isIOS || isInstalled || !showPrompt) {
     return null
   }
@@ -32,7 +59,32 @@ export default function IOSInstallPrompt() {
     <div className="fixed bottom-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50">
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <h4 className="font-semibold mb-2">📱 Enable Notifications on iPhone</h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold">📱 Enable Notifications on iPhone</h4>
+            {!debugMode && (
+              <button
+                onClick={() => setDebugMode(true)}
+                className="text-xs bg-white bg-opacity-20 px-1 rounded"
+              >
+                ?
+              </button>
+            )}
+          </div>
+
+          {debugMode && (
+            <div className="mb-3 p-2 bg-black bg-opacity-30 rounded text-xs">
+              <div>iOS: {String(isIOS)}</div>
+              <div>Installed: {String(isInstalled)}</div>
+              <div>UA: {userAgent.substring(0, 60)}...</div>
+              <button
+                onClick={() => setDebugMode(false)}
+                className="mt-1 text-xs bg-white bg-opacity-20 px-1 rounded"
+              >
+                Hide
+              </button>
+            </div>
+          )}
+
           <p className="text-sm mb-3">
             To receive job alerts and notifications, you need to install this app to your home screen:
           </p>
