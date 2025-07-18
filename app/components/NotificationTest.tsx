@@ -30,7 +30,8 @@ export default function NotificationTest() {
       serviceWorkerRegistration: null as any,
       userAgent: navigator.userAgent,
       isSecure: window.location.protocol === 'https:',
-      displayMode: window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser'
+      displayMode: window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser',
+      swUpdateAvailable: false
     }
 
     if ('serviceWorker' in navigator) {
@@ -43,6 +44,9 @@ export default function NotificationTest() {
           installing: !!registration.installing,
           waiting: !!registration.waiting
         }
+
+        // Check if there's an update available
+        debugData.swUpdateAvailable = !!registration.waiting
       } catch (error) {
         console.error('Service worker check failed:', error)
       }
@@ -50,6 +54,129 @@ export default function NotificationTest() {
 
     setDebugInfo(debugData)
     console.log('🔍 Debug Info:', debugData)
+  }
+
+  const forceServiceWorkerUpdate = async () => {
+    setLastNotification('🔄 Forcing service worker update...')
+
+    if (!('serviceWorker' in navigator)) {
+      setLastNotification('❌ Service Worker not supported')
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register('/sw-custom.js', {
+        scope: '/',
+        updateViaCache: 'none' // Force fresh download
+      })
+
+      console.log('🔄 Service worker registration:', registration)
+
+      // Force update check
+      await registration.update()
+
+      // Wait for new service worker to be ready
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+      }
+
+      setLastNotification('✅ Service worker updated - please refresh the page')
+
+      // Refresh debug info
+      setTimeout(() => {
+        gatherDebugInfo()
+      }, 1000)
+
+    } catch (error) {
+      console.error('❌ Service worker update failed:', error)
+      setLastNotification(`❌ Service worker update failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const comprehensiveIOSTest = async () => {
+    setLastNotification('🍎 Starting comprehensive iOS test...')
+
+    const steps = [
+      'Checking iOS compatibility...',
+      'Verifying service worker...',
+      'Testing permission flow...',
+      'Sending test notification...',
+      'Testing background notification...'
+    ]
+
+    for (let i = 0; i < steps.length; i++) {
+      setLastNotification(`🍎 Step ${i + 1}/5: ${steps[i]}`)
+      await new Promise(resolve => setTimeout(resolve, 1500))
+
+      try {
+        switch (i) {
+          case 0:
+            // iOS compatibility check
+            const iosCheck = await NotificationManager.checkIOSCompatibility()
+            if (!iosCheck.canUseNotifications) {
+              setLastNotification(`❌ iOS Test Failed: ${iosCheck.reason}`)
+              return
+            }
+            break
+
+          case 1:
+            // Service worker check
+            if (!('serviceWorker' in navigator)) {
+              setLastNotification('❌ iOS Test Failed: Service Worker not supported')
+              return
+            }
+            const registration = await navigator.serviceWorker.ready
+            if (!registration.active) {
+              setLastNotification('❌ iOS Test Failed: Service Worker not active')
+              return
+            }
+            break
+
+          case 2:
+            // Permission flow
+            const permissionResult = await NotificationManager.ensurePermissionWithIOSSupport()
+            if (!permissionResult.success) {
+              setLastNotification(`❌ iOS Test Failed: Permission - ${permissionResult.error}`)
+              return
+            }
+            break
+
+          case 3:
+            // Test notification
+            const testNotification = await NotificationManager.sendIOSOptimizedNotification({
+              title: 'iOS Test Notification ✅',
+              body: 'If you see this, the iOS notification system is working!',
+              tag: 'ios-test',
+              requireInteraction: true,
+              data: { type: 'test', testStep: 4 }
+            })
+            if (!testNotification) {
+              setLastNotification('❌ iOS Test Failed: Could not send test notification')
+              return
+            }
+            break
+
+          case 4:
+            // Background test
+            setLastNotification('🍎 Final step: Testing background notification in 5 seconds... Switch to another app now!')
+            setTimeout(async () => {
+              await NotificationManager.sendIOSOptimizedNotification({
+                title: 'iOS Background Test ✅',
+                body: 'Success! iOS background notifications are working.',
+                tag: 'ios-background-test',
+                requireInteraction: true,
+                data: { type: 'background-test' }
+              })
+            }, 5000)
+            break
+        }
+      } catch (error) {
+        setLastNotification(`❌ iOS Test Failed at step ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        return
+      }
+    }
+
+    setLastNotification('✅ iOS Test Completed! Check for the background notification that should appear in 5 seconds.')
   }
 
   const testStepByStep = async () => {
@@ -364,12 +491,26 @@ export default function NotificationTest() {
       <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
         <div className="flex justify-between items-center mb-3">
           <h4 className="font-medium text-gray-800">🔧 Debug & Testing</h4>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={testStepByStep}
               className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
             >
               🧪 Step-by-Step Test
+            </button>
+            {isIOS && (
+              <button
+                onClick={comprehensiveIOSTest}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+              >
+                🍎 iOS Test
+              </button>
+            )}
+            <button
+              onClick={forceServiceWorkerUpdate}
+              className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700"
+            >
+              🔄 Update SW
             </button>
             <button
               onClick={() => setShowDebug(!showDebug)}
@@ -384,11 +525,11 @@ export default function NotificationTest() {
           <div className="bg-gray-900 text-green-400 rounded p-3 font-mono text-xs space-y-1">
             <div>🔍 <strong>Support:</strong> {debugInfo.notificationSupport ? '✅' : '❌'} Notifications, {debugInfo.serviceWorkerSupport ? '✅' : '❌'} Service Worker</div>
             <div>🔐 <strong>Permission:</strong> {debugInfo.permission}</div>
-            <div>⚙️ <strong>SW Ready:</strong> {debugInfo.serviceWorkerReady ? '✅' : '❌'}</div>
+            <div>⚙️ <strong>SW Ready:</strong> {debugInfo.serviceWorkerReady ? '✅' : '❌'} | <strong>Update Available:</strong> {debugInfo.swUpdateAvailable ? '🟡' : '✅'}</div>
             <div>🔒 <strong>Secure:</strong> {debugInfo.isSecure ? '✅' : '❌'} | <strong>Mode:</strong> {debugInfo.displayMode}</div>
             <div>📱 <strong>UA:</strong> {debugInfo.userAgent.substring(0, 80)}...</div>
             {debugInfo.serviceWorkerRegistration && (
-              <div>🔧 <strong>SW:</strong> Active: {debugInfo.serviceWorkerRegistration.active ? '✅' : '❌'}</div>
+              <div>🔧 <strong>SW:</strong> Active: {debugInfo.serviceWorkerRegistration.active ? '✅' : '❌'}, Installing: {debugInfo.serviceWorkerRegistration.installing ? '🔄' : '❌'}, Waiting: {debugInfo.serviceWorkerRegistration.waiting ? '⏳' : '❌'}</div>
             )}
           </div>
         )}
@@ -399,11 +540,13 @@ export default function NotificationTest() {
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
           <h4 className="font-medium text-blue-800 mb-2">🍎 iOS Testing Notes</h4>
           <div className="text-sm text-blue-700 space-y-1">
+            <div>• <strong>🔄 IMPORTANT:</strong> Click "Update SW" button above first if this is your first time testing</div>
+            <div>• <strong>🍎 Use the "iOS Test" button for a complete iOS-specific test flow</strong></div>
             <div>• All notifications are automatically optimized for iOS Safari</div>
             <div>• Limited feature support is normal and expected on iOS</div>
             <div>• Notifications will appear even with limited features detected</div>
             <div>• Test background notifications by switching to another app after triggering</div>
-            <div>• <strong>Use the Step-by-Step Test button above to troubleshoot issues</strong></div>
+            <div>• <strong>If notifications still don't work: Update SW → Refresh page → Try iOS Test</strong></div>
           </div>
         </div>
       )}

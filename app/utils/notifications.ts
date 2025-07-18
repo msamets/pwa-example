@@ -191,15 +191,30 @@ export class NotificationManager {
 
       console.log('📱 Showing notification via service worker with options:', options)
 
-      // Use the message-based approach for better iOS compatibility
+            // Use MessageChannel for better iOS compatibility
       if (registration.active) {
-        registration.active.postMessage({
-          type: 'show-notification',
-          title: data.title,
-          options: options
+        return new Promise((resolve) => {
+          const messageChannel = new MessageChannel()
+
+          messageChannel.port1.onmessage = (event) => {
+            console.log('📨 Service worker response:', event.data)
+            resolve(event.data.success || false)
+          }
+
+          registration.active!.postMessage({
+            type: 'show-notification',
+            title: data.title,
+            options: options
+          }, [messageChannel.port2])
+
+          console.log('✅ Service worker notification message sent with MessageChannel')
+
+          // Fallback timeout in case no response
+          setTimeout(() => {
+            console.log('⏰ Service worker response timeout, assuming success')
+            resolve(true)
+          }, 3000)
         })
-        console.log('✅ Service worker notification message sent')
-        return true
       } else {
         // Fallback to direct registration method
         await registration.showNotification(data.title, options)
