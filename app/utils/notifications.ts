@@ -469,6 +469,25 @@ export class NotificationManager {
       }
     })
   }
+
+  static async sendChatMessage(senderName: string, message: string, messageId?: string): Promise<Notification | null> {
+    // Truncate long messages for notification display
+    const truncatedMessage = message.length > 100 ? message.substring(0, 100) + '...' : message
+
+    return this.sendIOSOptimizedNotification({
+      title: `💬 New message from ${senderName}`,
+      body: truncatedMessage,
+      tag: 'chat-message', // This will replace previous chat notifications
+      requireInteraction: false, // Allow auto-dismiss for chat messages
+      data: {
+        type: 'chat-message',
+        messageId,
+        senderName,
+        fullMessage: message,
+        redirectUrl: '/chat?from=notification'
+      }
+    })
+  }
 }
 
 // Service Worker notification handler (for background notifications)

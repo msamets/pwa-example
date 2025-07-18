@@ -10,6 +10,7 @@
   "categories": ["business", "productivity"],
   "lang": "en",
   "scope": "/",
+  "permissions": ["notifications"],
   "icons": [
     {
       "src": "/icon.svg",
