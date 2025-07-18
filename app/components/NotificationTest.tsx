@@ -65,10 +65,10 @@ export default function NotificationTest() {
     }
 
     try {
-      const registration = await navigator.serviceWorker.register('/sw-custom.js', {
-        scope: '/',
-        updateViaCache: 'none' // Force fresh download
-      })
+             const registration = await navigator.serviceWorker.register('/sw.js', {
+         scope: '/',
+         updateViaCache: 'none' // Force fresh download
+       })
 
       console.log('🔄 Service worker registration:', registration)
 
@@ -93,6 +93,125 @@ export default function NotificationTest() {
     }
   }
 
+  const serviceWorkerDiagnostic = async () => {
+    setLastNotification('🔍 Running service worker diagnostic...')
+
+    if (!('serviceWorker' in navigator)) {
+      setLastNotification('❌ Service Worker not supported in this browser')
+      return
+    }
+
+    try {
+      console.log('🔍 Service Worker Diagnostic Start')
+
+      // Check current registration
+      const registration = await navigator.serviceWorker.getRegistration()
+      console.log('📋 Current registration:', registration)
+
+      if (!registration) {
+        setLastNotification('⚠️ No service worker registered - attempting registration...')
+
+        try {
+                     const newRegistration = await navigator.serviceWorker.register('/sw.js', {
+             scope: '/',
+             updateViaCache: 'none'
+           })
+          console.log('✅ Service worker registered:', newRegistration)
+          setLastNotification('✅ Service worker registered successfully')
+
+          // Wait for it to become active
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('Service worker activation timeout'))
+            }, 10000)
+
+            const checkActive = () => {
+              if (newRegistration.active) {
+                clearTimeout(timeout)
+                resolve(newRegistration.active)
+              } else {
+                setTimeout(checkActive, 100)
+              }
+            }
+            checkActive()
+          })
+
+          setLastNotification('✅ Service worker is now active')
+        } catch (regError) {
+          console.error('❌ Registration failed:', regError)
+          setLastNotification(`❌ Registration failed: ${regError instanceof Error ? regError.message : 'Unknown error'}`)
+          return
+        }
+      } else {
+        console.log('📋 Registration found:', {
+          scope: registration.scope,
+          active: !!registration.active,
+          installing: !!registration.installing,
+          waiting: !!registration.waiting
+        })
+
+        if (registration.active) {
+          setLastNotification('✅ Service worker is active and ready')
+        } else if (registration.installing) {
+          setLastNotification('🔄 Service worker is installing...')
+
+                     // Wait for installation to complete
+           await new Promise((resolve, reject) => {
+             const timeout = setTimeout(() => {
+               reject(new Error('Installation timeout'))
+             }, 15000)
+
+             if (registration.installing) {
+               registration.installing.addEventListener('statechange', () => {
+                 console.log('📊 SW state change:', registration.installing?.state)
+                 if (registration.installing?.state === 'activated') {
+                   clearTimeout(timeout)
+                   resolve(registration.installing)
+                 } else if (registration.installing?.state === 'redundant') {
+                   clearTimeout(timeout)
+                   reject(new Error('Service worker became redundant'))
+                 }
+               })
+             } else {
+               clearTimeout(timeout)
+               reject(new Error('Installing service worker became null'))
+             }
+           })
+
+          setLastNotification('✅ Service worker installation completed')
+        } else if (registration.waiting) {
+          setLastNotification('⏳ Service worker is waiting - activating...')
+
+          // Force activation
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+
+          await new Promise((resolve) => {
+            registration.addEventListener('controllerchange', () => {
+              resolve(true)
+            })
+            setTimeout(resolve, 3000) // Fallback timeout
+          })
+
+          setLastNotification('✅ Service worker activated')
+        } else {
+          setLastNotification('❌ Service worker in unknown state')
+        }
+      }
+
+      // Final verification
+      const finalRegistration = await navigator.serviceWorker.getRegistration()
+      if (finalRegistration?.active) {
+        setLastNotification('✅ Service worker diagnostic complete - SW is ready!')
+      } else {
+        setLastNotification('❌ Service worker diagnostic failed - SW not active')
+      }
+
+    } catch (error) {
+      console.error('💥 Service Worker Diagnostic Error:', error)
+      setLastNotification(`❌ Diagnostic failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   const comprehensiveIOSTest = async () => {
     setLastNotification('🍎 Starting comprehensive iOS test...')
 
@@ -106,7 +225,7 @@ export default function NotificationTest() {
 
     for (let i = 0; i < steps.length; i++) {
       setLastNotification(`🍎 Step ${i + 1}/5: ${steps[i]}`)
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       try {
         switch (i) {
@@ -117,32 +236,78 @@ export default function NotificationTest() {
               setLastNotification(`❌ iOS Test Failed: ${iosCheck.reason}`)
               return
             }
+            console.log('✅ iOS compatibility check passed')
             break
 
           case 1:
-            // Service worker check
+            // Service worker check with timeout
+            console.log('🔍 Starting service worker verification...')
+
             if (!('serviceWorker' in navigator)) {
               setLastNotification('❌ iOS Test Failed: Service Worker not supported')
               return
             }
-            const registration = await navigator.serviceWorker.ready
-            if (!registration.active) {
-              setLastNotification('❌ iOS Test Failed: Service Worker not active')
+
+            try {
+              // Add timeout to prevent hanging
+              const registration = await Promise.race([
+                navigator.serviceWorker.ready,
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('Service worker ready timeout')), 8000)
+                )
+              ]) as ServiceWorkerRegistration
+
+              console.log('📋 Service worker ready:', registration)
+
+              if (!registration.active) {
+                console.log('⚠️ No active service worker, checking states...')
+                console.log('📊 SW States:', {
+                  active: !!registration.active,
+                  installing: !!registration.installing,
+                  waiting: !!registration.waiting
+                })
+
+                if (registration.waiting) {
+                  console.log('🔄 Activating waiting service worker...')
+                  registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+
+                  // Wait a bit for activation
+                  await new Promise(resolve => setTimeout(resolve, 2000))
+
+                  // Re-check
+                  const newReg = await navigator.serviceWorker.getRegistration()
+                  if (!newReg?.active) {
+                    setLastNotification('❌ iOS Test Failed: Service Worker activation failed')
+                    return
+                  }
+                } else {
+                  setLastNotification('❌ iOS Test Failed: Service Worker not active and no waiting worker')
+                  return
+                }
+              }
+
+              console.log('✅ Service worker verification passed')
+            } catch (swError) {
+              console.error('❌ Service worker error:', swError)
+              setLastNotification(`❌ iOS Test Failed: Service Worker error - ${swError instanceof Error ? swError.message : 'Unknown error'}`)
               return
             }
             break
 
           case 2:
             // Permission flow
+            console.log('🔍 Starting permission flow...')
             const permissionResult = await NotificationManager.ensurePermissionWithIOSSupport()
             if (!permissionResult.success) {
               setLastNotification(`❌ iOS Test Failed: Permission - ${permissionResult.error}`)
               return
             }
+            console.log('✅ Permission flow passed')
             break
 
           case 3:
             // Test notification
+            console.log('🔍 Sending test notification...')
             const testNotification = await NotificationManager.sendIOSOptimizedNotification({
               title: 'iOS Test Notification ✅',
               body: 'If you see this, the iOS notification system is working!',
@@ -154,6 +319,7 @@ export default function NotificationTest() {
               setLastNotification('❌ iOS Test Failed: Could not send test notification')
               return
             }
+            console.log('✅ Test notification sent')
             break
 
           case 4:
@@ -168,9 +334,11 @@ export default function NotificationTest() {
                 data: { type: 'background-test' }
               })
             }, 5000)
+            console.log('✅ Background test scheduled')
             break
         }
       } catch (error) {
+        console.error(`💥 Step ${i + 1} error:`, error)
         setLastNotification(`❌ iOS Test Failed at step ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`)
         return
       }
@@ -511,6 +679,12 @@ export default function NotificationTest() {
               className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700"
             >
               🔄 Update SW
+            </button>
+            <button
+              onClick={serviceWorkerDiagnostic}
+              className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+            >
+              🔍 SW Diagnostic
             </button>
             <button
               onClick={() => setShowDebug(!showDebug)}

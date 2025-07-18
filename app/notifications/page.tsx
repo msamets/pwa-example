@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import NotificationPermission from '../components/NotificationPermission'
 import NotificationTest from '../components/NotificationTest'
 import IOSDebugInfo from '../components/IOSDebugInfo'
+import ConsoleLogger from '../components/ConsoleLogger'
 import { getIOSInfo } from '../utils/notifications'
 
 export default function NotificationsPage() {
@@ -22,6 +23,14 @@ export default function NotificationsPage() {
     // Show iOS debug by default on iOS devices
     const iosInfo = getIOSInfo()
     setShowIOSDebug(iosInfo.isIOS)
+
+    // Add initial debug message to console
+    console.log('🚀 Notifications page loaded')
+    console.log('📱 User Agent:', navigator.userAgent)
+    console.log('🔔 Notification support:', 'Notification' in window)
+    console.log('🍎 iOS Info:', iosInfo)
+    console.log('⚙️ Service Worker support:', 'serviceWorker' in navigator)
+    console.log('🔐 Current permission:', 'Notification' in window ? Notification.permission : 'N/A')
   }, [])
 
   const handlePermissionChange = (newPermission: NotificationPermission) => {
@@ -66,6 +75,12 @@ export default function NotificationsPage() {
           </button>
         </div>
       )}
+
+      {/* Console Logger for Mobile Debugging */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-gray-900">📱 Mobile Debug Console</h2>
+        <ConsoleLogger />
+      </div>
 
       {/* Support Check */}
       <div className={`rounded-lg p-6 ${isSupported ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
