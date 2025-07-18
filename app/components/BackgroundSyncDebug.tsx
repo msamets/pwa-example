@@ -22,8 +22,11 @@ export default function BackgroundSyncDebug({
   const [isExpanded, setIsExpanded] = useState(false)
   const [backgroundSyncSupport, setBackgroundSyncSupport] = useState<{
     sync: boolean,
-    periodicSync: boolean
-  }>({ sync: false, periodicSync: false })
+    periodicSync: boolean,
+    isSecure: boolean,
+    isInstalled: boolean,
+    error?: string
+  }>({ sync: false, periodicSync: false, isSecure: false, isInstalled: false })
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
@@ -42,14 +45,20 @@ export default function BackgroundSyncDebug({
             // Check Background Sync API support
             const syncSupport = 'sync' in registration
             const periodicSyncSupport = 'periodicSync' in registration
+            const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+            const isInstalled = window.matchMedia('(display-mode: standalone)').matches
 
             setBackgroundSyncSupport({
               sync: syncSupport,
-              periodicSync: periodicSyncSupport
+              periodicSync: periodicSyncSupport,
+              isSecure,
+              isInstalled
             })
 
             addLog(`Background Sync: ${syncSupport ? 'Supported' : 'Not supported'}`)
             addLog(`Periodic Sync: ${periodicSyncSupport ? 'Supported' : 'Not supported'}`)
+            addLog(`HTTPS: ${isSecure ? 'Yes' : 'No (required for background sync)'}`)
+            addLog(`PWA Installed: ${isInstalled ? 'Yes' : 'No (may be required for background sync)'}`)
           } else {
             setServiceWorkerStatus('Registered but not active')
             addLog('Service Worker registered but not active')
@@ -212,6 +221,18 @@ export default function BackgroundSyncDebug({
               <span>Periodic:</span>
               <span className={`ml-1 ${backgroundSyncSupport.periodicSync ? 'text-green-600' : 'text-red-600'}`}>
                 {backgroundSyncSupport.periodicSync ? '✓' : '✗'}
+              </span>
+            </div>
+            <div>
+              <span>HTTPS:</span>
+              <span className={`ml-1 ${backgroundSyncSupport.isSecure ? 'text-green-600' : 'text-red-600'}`}>
+                {backgroundSyncSupport.isSecure ? '✓' : '✗'}
+              </span>
+            </div>
+            <div>
+              <span>PWA Installed:</span>
+              <span className={`ml-1 ${backgroundSyncSupport.isInstalled ? 'text-green-600' : 'text-red-600'}`}>
+                {backgroundSyncSupport.isInstalled ? '✓' : '✗'}
               </span>
             </div>
           </div>

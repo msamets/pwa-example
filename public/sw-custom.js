@@ -236,29 +236,8 @@ self.addEventListener('periodicsync', (event) => {
   }
 })
 
-// Schedule the next background check using registration.sync
-function scheduleNextBackgroundCheck() {
-  if (isBackgroundSyncEnabled && 'sync' in self.registration) {
-    // Use a timeout to register sync after a delay
-    setTimeout(() => {
-      self.registration.sync.register('check-messages').then(() => {
-        console.log('⏰ Scheduled next background message check')
-      }).catch(error => {
-        console.error('❌ Failed to schedule background check:', error)
-      })
-    }, 5000) // Schedule next check in 5 seconds
-  }
-}
-
-// Keep service worker alive with periodic tasks
-function keepServiceWorkerAlive() {
-  setInterval(() => {
-    console.log('💓 Service Worker heartbeat:', new Date().toISOString())
-  }, 30000) // Every 30 seconds
-}
-
 // Enhanced message handling
-self.addEventListener('message', (event) => {
+self.addEventListener('message', async (event) => {
   console.log('📨 Service Worker received message:', event.data)
 
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -302,22 +281,10 @@ self.addEventListener('message', (event) => {
 
     isBackgroundSyncEnabled = true
 
-    // Register background sync immediately
-    if ('sync' in self.registration) {
-      self.registration.sync.register('check-messages').then(() => {
-        console.log('✅ Background sync registered')
-        // Start the scheduling cycle
-        scheduleNextBackgroundCheck()
-      }).catch(error => {
-        console.error('❌ Failed to register background sync:', error)
-      })
-    } else {
-      console.log('⚠️ Background Sync API not supported, using fallback')
-      // Fallback to periodic checks (will be throttled but better than nothing)
-      startFallbackBackgroundChecking()
-    }
+    // Try to register background sync with proper error handling
+    await tryRegisterBackgroundSync()
 
-    // Keep service worker alive
+    // Keep service worker alive regardless of background sync support
     keepServiceWorkerAlive()
   }
 
@@ -347,21 +314,147 @@ self.addEventListener('message', (event) => {
   }
 })
 
-// Fallback background checking for browsers without Background Sync API
-function startFallbackBackgroundChecking() {
-  console.log('🔄 Starting fallback background checking...')
+// New function to safely try registering background sync
+async function tryRegisterBackgroundSync() {
+  try {
+    // Check if we're in a secure context (HTTPS required)
+    if (!self.isSecureContext) {
+      console.log('⚠️ Background Sync requires HTTPS - using fallback')
+      startFallbackBackgroundChecking()
+      return
+    }
 
-  const fallbackCheck = () => {
-    if (isBackgroundSyncEnabled) {
-      checkForNewMessages().then(() => {
-        // Schedule next check (will be throttled by browser but still works)
-        setTimeout(fallbackCheck, 30000) // Every 30 seconds (browsers may throttle this)
-      })
+    // Check if Background Sync API is available
+    if (!('sync' in self.registration)) {
+      console.log('⚠️ Background Sync API not supported - using fallback')
+      startFallbackBackgroundChecking()
+      return
+    }
+
+    // Check if the app is installed (background sync often requires this)
+    const clients = await self.clients.matchAll()
+    const hasStandaloneClient = clients.some(client =>
+      client.url.includes('utm_source=web_app_manifest') ||
+      client.url.includes('display-mode=standalone')
+    )
+
+    if (!hasStandaloneClient) {
+      console.log('⚠️ App may not be installed - background sync might not work reliably')
+    }
+
+    // Attempt to register background sync
+    console.log('🔄 Attempting to register background sync...')
+    await self.registration.sync.register('check-messages')
+    console.log('✅ Background sync registered successfully')
+
+    // Start the scheduling cycle
+    scheduleNextBackgroundCheck()
+
+  } catch (error) {
+    console.log('❌ Background sync registration failed:', error.message)
+
+    // Analyze the error and provide specific fallbacks
+    if (error.name === 'NotAllowedError') {
+      console.log('🔒 Background sync permission denied - this usually means:')
+      console.log('   • App is not installed to home screen, or')
+      console.log('   • Browser has background sync disabled, or')
+      console.log('   • Site is not served over HTTPS')
+      console.log('   • Using fallback notification method')
+    } else if (error.name === 'AbortError') {
+      console.log('⚠️ Background sync aborted - browser may not support it for this site')
+    } else if (error.name === 'InvalidStateError') {
+      console.log('⚠️ Service worker in invalid state for background sync')
+    }
+
+    // Always fall back to alternative method
+    console.log('🔄 Starting fallback background checking...')
+    startFallbackBackgroundChecking()
+  }
+}
+
+// Enhanced fallback background checking with better reliability
+function startFallbackBackgroundChecking() {
+  console.log('🔄 Starting enhanced fallback background checking...')
+
+  let checkCount = 0
+  let lastCheckTime = Date.now()
+
+  const fallbackCheck = async () => {
+    if (!isBackgroundSyncEnabled) {
+      console.log('⏹️ Background sync disabled, stopping fallback checks')
+      return
+    }
+
+    checkCount++
+    const now = Date.now()
+    const timeSinceLastCheck = now - lastCheckTime
+    lastCheckTime = now
+
+    console.log(`🔍 Fallback check #${checkCount} (${timeSinceLastCheck}ms since last)`)
+
+    try {
+      const hasNewMessages = await checkForNewMessages()
+
+      if (hasNewMessages) {
+        console.log('📬 New messages found via fallback method')
+      }
+
+      // Adaptive timing - check more frequently if we found messages recently
+      const nextCheckDelay = hasNewMessages ? 15000 : 30000 // 15s or 30s
+
+      if (isBackgroundSyncEnabled) {
+        setTimeout(fallbackCheck, nextCheckDelay)
+      }
+    } catch (error) {
+      console.error('❌ Fallback check failed:', error)
+
+      // Still schedule next check even if this one failed
+      if (isBackgroundSyncEnabled) {
+        setTimeout(fallbackCheck, 60000) // Check again in 1 minute
+      }
     }
   }
 
-  // Start the fallback cycle
+  // Start the fallback cycle immediately
   fallbackCheck()
+}
+
+// Enhanced schedule function with better error handling
+function scheduleNextBackgroundCheck() {
+  if (!isBackgroundSyncEnabled) {
+    return
+  }
+
+  if (!('sync' in self.registration)) {
+    console.log('⚠️ Background Sync not available for scheduling')
+    return
+  }
+
+  // Use a timeout to register sync after a delay
+  setTimeout(async () => {
+    if (isBackgroundSyncEnabled) {
+      try {
+        await self.registration.sync.register('check-messages')
+        console.log('⏰ Scheduled next background message check')
+      } catch (error) {
+        console.log('❌ Failed to schedule background check:', error.message)
+        // If scheduling fails, fall back to direct timeout
+        setTimeout(() => {
+          if (isBackgroundSyncEnabled) {
+            checkForNewMessages()
+            scheduleNextBackgroundCheck()
+          }
+        }, 30000)
+      }
+    }
+  }, 5000) // Schedule next check in 5 seconds
+}
+
+// Keep service worker alive with periodic tasks
+function keepServiceWorkerAlive() {
+  setInterval(() => {
+    console.log('💓 Service Worker heartbeat:', new Date().toISOString())
+  }, 30000) // Every 30 seconds
 }
 
 // Handle notification clicks
