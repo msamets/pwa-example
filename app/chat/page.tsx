@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { io, Socket } from 'socket.io-client'
 
 interface Message {
   id: string
@@ -11,12 +10,14 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const [socket, setSocket] = useState<Socket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [userIP, setUserIP] = useState('')
   const [isConnected, setIsConnected] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const lastMessageIdRef = useRef<string | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -26,61 +27,101 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages])
 
+  // Fetch messages from the API
+  const fetchMessages = async (lastMessageId?: string) => {
+    try {
+      const url = lastMessageId
+        ? `/api/chat/messages?lastMessageId=${lastMessageId}`
+        : '/api/chat/messages'
+
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error('Failed to fetch messages')
+      }
+
+      const data = await response.json()
+
+      if (data.userIP && !userIP) {
+        setUserIP(data.userIP)
+      }
+
+      if (data.messages && data.messages.length > 0) {
+        if (lastMessageId) {
+          // Append new messages
+          setMessages(prev => [...prev, ...data.messages])
+        } else {
+          // Set initial messages
+          setMessages(data.messages)
+        }
+
+        // Update the last message ID
+        const lastMsg = data.messages[data.messages.length - 1]
+        lastMessageIdRef.current = lastMsg.id
+      }
+
+      if (!isConnected) {
+        setIsConnected(true)
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error)
+      setIsConnected(false)
+    }
+  }
+
+  // Start polling for messages
   useEffect(() => {
-    // Get the current host for dynamic connection
-    const socketUrl = process.env.NODE_ENV === 'production'
-      ? window.location.origin
-      : 'http://localhost:3000'
+    // Initial fetch
+    fetchMessages()
 
-    const socketInstance = io(socketUrl, {
-      transports: ['websocket', 'polling'],
-      timeout: 20000,
-      forceNew: true
-    })
-
-    socketInstance.on('connect', () => {
-      console.log('Connected to server')
-      setIsConnected(true)
-    })
-
-    socketInstance.on('disconnect', () => {
-      console.log('Disconnected from server')
-      setIsConnected(false)
-    })
-
-    socketInstance.on('connect_error', (error) => {
-      console.error('Connection error:', error)
-      setIsConnected(false)
-    })
-
-    socketInstance.on('error', (error) => {
-      console.error('Socket error:', error)
-    })
-
-    socketInstance.on('user-joined', (data: { userIP: string }) => {
-      setUserIP(data.userIP)
-    })
-
-    socketInstance.on('message', (message: Message) => {
-      setMessages(prev => [...prev, message])
-    })
-
-    socketInstance.on('previous-messages', (prevMessages: Message[]) => {
-      setMessages(prevMessages)
-    })
-
-    setSocket(socketInstance)
+    // Set up polling
+    pollingIntervalRef.current = setInterval(() => {
+      fetchMessages(lastMessageIdRef.current || undefined)
+    }, 2000) // Poll every 2 seconds
 
     return () => {
-      socketInstance.disconnect()
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
     }
   }, [])
 
-  const sendMessage = (e: React.FormEvent) => {
+  const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (newMessage.trim() && socket) {
-      socket.emit('send-message', newMessage.trim())
+    if (!newMessage.trim() || isLoading) return
+
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/chat/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: newMessage.trim()
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to send message')
+      }
+
+      const data = await response.json()
+
+      if (data.userIP && !userIP) {
+        setUserIP(data.userIP)
+      }
+
+      // Add the sent message to the list immediately
+      if (data.message) {
+        setMessages(prev => [...prev, data.message])
+        lastMessageIdRef.current = data.message.id
+      }
+
       setNewMessage('')
+    } catch (error) {
+      console.error('Error sending message:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -160,15 +201,15 @@ export default function ChatPage() {
               }}
               placeholder="Type your message..."
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white chat-input"
-              disabled={!isConnected}
+              disabled={isLoading || !isConnected}
               maxLength={500}
             />
             <button
               type="submit"
-              disabled={!newMessage.trim() || !isConnected}
+              disabled={!newMessage.trim() || isLoading || !isConnected}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Send
+              {isLoading ? 'Sending...' : 'Send'}
             </button>
           </div>
           <div className="flex justify-between text-xs text-gray-500 mt-2">
