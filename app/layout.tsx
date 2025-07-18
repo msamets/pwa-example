@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import InstallPrompt from './components/InstallPrompt'
+import IOSInstallPrompt from './components/IOSInstallPrompt'
 
 export const metadata: Metadata = {
   title: 'Job Seeker PWA',
@@ -46,6 +47,7 @@ export default function RootLayout({
             {children}
           </main>
           <InstallPrompt />
+          <IOSInstallPrompt />
         </div>
       </body>
     </html>

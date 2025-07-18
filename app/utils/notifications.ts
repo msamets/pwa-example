@@ -11,6 +11,25 @@ export interface NotificationData {
   silent?: boolean
 }
 
+// Enhanced iOS detection and compatibility
+export function getIOSInfo() {
+  const userAgent = window.navigator.userAgent.toLowerCase()
+  const isIOS = /iphone|ipad|ipod/.test(userAgent)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                      (window.navigator as any).standalone === true
+
+  // Get iOS version if available
+  const match = userAgent.match(/os (\d+)_(\d+)_?(\d+)?/)
+  const version = match ? `${match[1]}.${match[2]}` : null
+
+  return {
+    isIOS,
+    isStandalone,
+    version,
+    supportsNotifications: isIOS && isStandalone && version && parseFloat(version) >= 16.4
+  }
+}
+
 export class NotificationManager {
   static async checkPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
@@ -41,6 +60,71 @@ export class NotificationManager {
     return false
   }
 
+  static async checkIOSCompatibility(): Promise<{
+    canUseNotifications: boolean,
+    reason?: string,
+    instructions?: string[]
+  }> {
+    const iosInfo = getIOSInfo()
+
+    if (!iosInfo.isIOS) {
+      return { canUseNotifications: true }
+    }
+
+    if (!iosInfo.isStandalone) {
+      return {
+        canUseNotifications: false,
+        reason: 'App must be installed to home screen',
+        instructions: [
+          'Tap the Share button at the bottom of Safari',
+          'Select "Add to Home Screen"',
+          'Tap "Add" to confirm',
+          'Open the app from your home screen'
+        ]
+      }
+    }
+
+    if (!iosInfo.supportsNotifications) {
+      return {
+        canUseNotifications: false,
+        reason: 'iOS 16.4 or later required',
+        instructions: ['Update your iPhone to iOS 16.4 or later']
+      }
+    }
+
+    return { canUseNotifications: true }
+  }
+
+  static async ensurePermissionWithIOSSupport(): Promise<{
+    success: boolean,
+    permission?: NotificationPermission,
+    error?: string,
+    needsInstall?: boolean
+  }> {
+    const iosCheck = await this.checkIOSCompatibility()
+
+    if (!iosCheck.canUseNotifications) {
+      return {
+        success: false,
+        error: iosCheck.reason,
+        needsInstall: iosCheck.reason?.includes('home screen')
+      }
+    }
+
+    try {
+      const hasPermission = await this.ensurePermission()
+      return {
+        success: hasPermission,
+        permission: await this.checkPermission()
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  }
+
   static async sendNotification(data: NotificationData): Promise<Notification | null> {
     const hasPermission = await this.ensurePermission()
 
@@ -69,6 +153,28 @@ export class NotificationManager {
     }
 
     return notification
+  }
+
+  // iOS-optimized notification method
+  static async sendIOSOptimizedNotification(data: NotificationData): Promise<Notification | null> {
+    const iosInfo = getIOSInfo()
+
+    // On iOS, simplify the notification options due to limited support
+    if (iosInfo.isIOS && iosInfo.isStandalone) {
+      const simplifiedData: NotificationData = {
+        title: data.title,
+        body: data.body,
+        // Remove unsupported properties on iOS
+        tag: undefined, // iOS doesn't support updating notifications
+        requireInteraction: true, // Always require interaction on iOS
+        silent: false, // iOS doesn't support silent notifications reliably
+        data: data.data
+      }
+      return this.sendNotification(simplifiedData)
+    }
+
+    // Use full features on other platforms
+    return this.sendNotification(data)
   }
 
   // Pre-defined notification types for job seeker app with redirect URLs
