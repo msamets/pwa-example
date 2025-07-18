@@ -63,3 +63,39 @@ body {
     gap: 1rem;
   }
 }
+
+/* Chat input specific styles to override dark mode */
+.chat-input {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  caret-color: #111827 !important;
+}
+
+.chat-input:focus {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  caret-color: #111827 !important;
+}
+
+.chat-input::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Override any dark mode styles for chat input */
+@media (prefers-color-scheme: dark) {
+  .chat-input {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+    caret-color: #111827 !important;
+  }
+
+  .chat-input:focus {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+    caret-color: #111827 !important;
+  }
+
+  .chat-input::placeholder {
+    color: #9ca3af !important;
+  }
+}
