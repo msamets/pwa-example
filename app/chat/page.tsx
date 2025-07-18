@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NotificationManager } from '../utils/notifications'
 import NotificationPermission from '../components/NotificationPermission'
+import BackgroundSyncDebug from '../components/BackgroundSyncDebug'
 
 interface Message {
   id: string
@@ -20,6 +21,7 @@ export default function ChatPage() {
   const [isPageVisible, setIsPageVisible] = useState(true)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
   const [showNotificationSettings, setShowNotificationSettings] = useState(false)
+  const [isBackgroundSyncActive, setIsBackgroundSyncActive] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const lastMessageIdRef = useRef<string | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -39,18 +41,111 @@ export default function ChatPage() {
     }
   }, [])
 
-  // Page visibility detection
+  // Setup service worker message listener
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      setIsPageVisible(!document.hidden)
-      console.log('📄 Page visibility changed:', !document.hidden)
+    if ('serviceWorker' in navigator) {
+      const handleServiceWorkerMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'new-messages') {
+          console.log('📨 Received new messages from service worker:', event.data.messages)
+
+          setMessages(prev => {
+            const newMessages = event.data.messages
+
+            // Update last message ID
+            if (newMessages.length > 0) {
+              const lastMsg = newMessages[newMessages.length - 1]
+              lastMessageIdRef.current = lastMsg.id
+            }
+
+            return [...prev, ...newMessages]
+          })
+        }
+      }
+
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage)
+
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage)
+      }
+    }
+  }, [])
+
+  // Service worker communication functions
+  const startBackgroundSync = async () => {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready
+      if (registration.active) {
+        registration.active.postMessage({
+          type: 'start-background-sync',
+          lastMessageId: lastMessageIdRef.current,
+          userIP: userIP
+        })
+        setIsBackgroundSyncActive(true)
+        console.log('🔄 Started background sync via service worker')
+      }
+    }
+  }
+
+  const stopBackgroundSync = async () => {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready
+      if (registration.active) {
+        registration.active.postMessage({
+          type: 'stop-background-sync'
+        })
+        setIsBackgroundSyncActive(false)
+        console.log('⏹️ Stopped background sync via service worker')
+      }
+    }
+  }
+
+  const updateSyncState = async () => {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready
+      if (registration.active) {
+        registration.active.postMessage({
+          type: 'update-sync-state',
+          lastMessageId: lastMessageIdRef.current,
+          userIP: userIP
+        })
+      }
+    }
+  }
+
+  // Page visibility detection with service worker integration
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      const isVisible = !document.hidden
+      setIsPageVisible(isVisible)
+      console.log('📄 Page visibility changed:', isVisible)
+
+      if (isVisible) {
+        // Page became visible - stop background sync and start regular polling
+        await stopBackgroundSync()
+        console.log('👀 Page visible: starting regular polling')
+      } else {
+        // Page went to background - start background sync if notifications are enabled
+        if (notificationPermission === 'granted') {
+          await startBackgroundSync()
+          console.log('🌙 Page hidden: started background sync')
+        }
+      }
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     // Also listen for focus/blur events for additional accuracy
-    const handleFocus = () => setIsPageVisible(true)
-    const handleBlur = () => setIsPageVisible(false)
+    const handleFocus = async () => {
+      setIsPageVisible(true)
+      await stopBackgroundSync()
+    }
+
+    const handleBlur = async () => {
+      setIsPageVisible(false)
+      if (notificationPermission === 'granted') {
+        await startBackgroundSync()
+      }
+    }
 
     window.addEventListener('focus', handleFocus)
     window.addEventListener('blur', handleBlur)
@@ -60,7 +155,22 @@ export default function ChatPage() {
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [])
+  }, [notificationPermission, userIP])
+
+  // Handle notification permission changes
+  useEffect(() => {
+    const updateBackgroundSync = async () => {
+      if (!isPageVisible) {
+        if (notificationPermission === 'granted') {
+          await startBackgroundSync()
+        } else {
+          await stopBackgroundSync()
+        }
+      }
+    }
+
+    updateBackgroundSync()
+  }, [notificationPermission, isPageVisible])
 
   // Fetch messages from the API
   const fetchMessages = async (lastMessageId?: string) => {
@@ -84,12 +194,12 @@ export default function ChatPage() {
         const newMessages = data.messages
 
         if (lastMessageId) {
-          // Append new messages and check for notifications
+          // Append new messages and check for notifications only if page is visible
           setMessages(prev => {
             const updatedMessages = [...prev, ...newMessages]
 
-            // Send notifications for new messages if page is not visible and user is not the sender
-            if (!isPageVisible && notificationPermission === 'granted') {
+            // Only send notifications from main app if page is visible (otherwise service worker handles it)
+            if (isPageVisible && notificationPermission === 'granted') {
               newMessages.forEach((message: Message) => {
                 // Don't notify for own messages
                 if (message.user !== userIP) {
@@ -115,6 +225,9 @@ export default function ChatPage() {
         // Update the last message ID
         const lastMsg = data.messages[data.messages.length - 1]
         lastMessageIdRef.current = lastMsg.id
+
+        // Update service worker state
+        await updateSyncState()
       }
 
       if (!isConnected) {
@@ -126,22 +239,24 @@ export default function ChatPage() {
     }
   }
 
-  // Start polling for messages
+  // Start polling for messages - only when page is visible
   useEffect(() => {
     // Initial fetch
     fetchMessages()
 
-    // Set up polling
-    pollingIntervalRef.current = setInterval(() => {
-      fetchMessages(lastMessageIdRef.current || undefined)
-    }, 2000) // Poll every 2 seconds
+    // Set up polling only when page is visible
+    if (isPageVisible) {
+      pollingIntervalRef.current = setInterval(() => {
+        fetchMessages(lastMessageIdRef.current || undefined)
+      }, 3000) // Poll every 3 seconds when visible (reduced frequency since service worker handles background)
+    }
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
       }
     }
-  }, [isPageVisible, notificationPermission, userIP]) // Re-run when visibility or notification permission changes
+  }, [isPageVisible, userIP]) // Re-run when visibility changes
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,6 +288,9 @@ export default function ChatPage() {
       if (data.message) {
         setMessages(prev => [...prev, data.message])
         lastMessageIdRef.current = data.message.id
+
+        // Update service worker state with new message
+        await updateSyncState()
       }
 
       setNewMessage('')
@@ -223,6 +341,10 @@ export default function ChatPage() {
               <div className={`w-2 h-2 rounded-full ${isPageVisible ? 'bg-green-400' : 'bg-yellow-400'}`}
                    title={isPageVisible ? 'Page is active' : 'Page is in background'}></div>
 
+              {/* Background sync indicator */}
+              <div className={`w-2 h-2 rounded-full ${isBackgroundSyncActive ? 'bg-blue-400' : 'bg-gray-400'}`}
+                   title={isBackgroundSyncActive ? 'Background sync active' : 'Background sync inactive'}></div>
+
               {/* Notification status indicator */}
               <div
                 className={`w-2 h-2 rounded-full ${
@@ -250,12 +372,13 @@ export default function ChatPage() {
               <h3 className="font-medium text-gray-900 mb-2">Background Notifications</h3>
               <p className="text-sm text-gray-600 mb-3">
                 Get notified when new messages arrive while you're not actively viewing this page.
+                Background sync runs via service worker for reliable notifications.
               </p>
 
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-sm mb-2">
                 <span>Page Status: {isPageVisible ?
-                  <span className="text-green-600">Active (no notifications)</span> :
-                  <span className="text-blue-600">Background (notifications enabled)</span>
+                  <span className="text-green-600">Active (regular polling)</span> :
+                  <span className="text-blue-600">Background (service worker sync)</span>
                 }</span>
 
                 <button
@@ -264,6 +387,13 @@ export default function ChatPage() {
                 >
                   Test Notification
                 </button>
+              </div>
+
+              <div className="text-xs text-gray-500">
+                Background Sync: {isBackgroundSyncActive ?
+                  <span className="text-blue-600">🔄 Active</span> :
+                  <span className="text-gray-600">⏸️ Inactive</span>
+                }
               </div>
             </div>
 
@@ -342,14 +472,25 @@ export default function ChatPage() {
               ) : (
                 <span className="text-red-600">● Disconnected</span>
               )}
-              {notificationPermission === 'granted' && !isPageVisible && (
-                <span className="text-blue-600 ml-2">🔔 Notifications active</span>
+              {notificationPermission === 'granted' && (
+                <span className="text-blue-600 ml-2">
+                  🔔 {isPageVisible ? 'Ready' : (isBackgroundSyncActive ? 'Background sync' : 'Disabled')}
+                </span>
               )}
             </span>
             <span>{newMessage.length}/500</span>
           </div>
         </form>
       </div>
+
+      {/* Debug Component */}
+      <BackgroundSyncDebug
+        isBackgroundSyncActive={isBackgroundSyncActive}
+        isPageVisible={isPageVisible}
+        notificationPermission={notificationPermission}
+        lastMessageId={lastMessageIdRef.current}
+        userIP={userIP}
+      />
     </div>
   )
 }

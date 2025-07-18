@@ -12,6 +12,12 @@ const STATIC_CACHE_URLS = [
   '/icon-512x512.png'
 ]
 
+// Background message checking variables
+let lastMessageId = null
+let backgroundCheckInterval = null
+let isBackgroundCheckingActive = false
+let userIP = null
+
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   console.log('🔧 Service Worker installing...')
@@ -101,7 +107,113 @@ self.addEventListener('fetch', (event) => {
   )
 })
 
-// ✨ NOTIFICATION HANDLING - This is the key missing piece! ✨
+// Background message checking function
+async function checkForNewMessages() {
+  try {
+    console.log('📡 Checking for new messages in background...', { lastMessageId, userIP })
+
+    const url = lastMessageId
+      ? `${self.location.origin}/api/chat/messages?lastMessageId=${lastMessageId}`
+      : `${self.location.origin}/api/chat/messages`
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error('❌ Failed to fetch messages:', response.status)
+      return
+    }
+
+    const data = await response.json()
+
+    // Store user IP if we don't have it
+    if (data.userIP && !userIP) {
+      userIP = data.userIP
+      console.log('👤 Stored user IP:', userIP)
+    }
+
+    if (data.messages && data.messages.length > 0) {
+      console.log('📬 Found new messages:', data.messages.length)
+
+      // Process new messages
+      for (const message of data.messages) {
+        // Don't notify for own messages
+        if (message.user !== userIP) {
+          console.log('🔔 Sending notification for message from:', message.user)
+
+          await self.registration.showNotification(`💬 New message from ${message.user}`, {
+            body: message.message.length > 100 ? message.message.substring(0, 100) + '...' : message.message,
+            icon: '/icon-192x192.png',
+            badge: '/icon-192x192.png',
+            tag: 'chat-message',
+            requireInteraction: false,
+            data: {
+              type: 'chat-message',
+              messageId: message.id,
+              senderName: message.user,
+              fullMessage: message.message,
+              redirectUrl: '/chat?from=notification'
+            }
+          })
+        }
+      }
+
+      // Update last message ID
+      const lastMsg = data.messages[data.messages.length - 1]
+      lastMessageId = lastMsg.id
+      console.log('📌 Updated last message ID:', lastMessageId)
+
+      // Notify main app about new messages if it's listening
+      notifyMainAppOfNewMessages(data.messages)
+    }
+  } catch (error) {
+    console.error('❌ Error checking for new messages:', error)
+  }
+}
+
+// Notify main app about new messages
+function notifyMainAppOfNewMessages(messages) {
+  self.clients.matchAll({ type: 'window' }).then(clients => {
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'new-messages',
+        messages: messages
+      })
+    })
+  })
+}
+
+// Start background message checking
+function startBackgroundMessageChecking() {
+  if (isBackgroundCheckingActive) {
+    console.log('⚠️ Background checking already active')
+    return
+  }
+
+  console.log('🚀 Starting background message checking...')
+  isBackgroundCheckingActive = true
+
+  // Check immediately
+  checkForNewMessages()
+
+  // Then check every 5 seconds
+  backgroundCheckInterval = setInterval(checkForNewMessages, 5000)
+}
+
+// Stop background message checking
+function stopBackgroundMessageChecking() {
+  if (!isBackgroundCheckingActive) {
+    return
+  }
+
+  console.log('🛑 Stopping background message checking...')
+  isBackgroundCheckingActive = false
+
+  if (backgroundCheckInterval) {
+    clearInterval(backgroundCheckInterval)
+    backgroundCheckInterval = null
+  }
+}
+
+// ✨ ENHANCED MESSAGE HANDLING ✨
 self.addEventListener('message', (event) => {
   console.log('📨 Service Worker received message:', event.data)
 
@@ -130,6 +242,46 @@ self.addEventListener('message', (event) => {
           event.ports[0].postMessage({ success: false, error: error.message })
         }
       })
+  }
+
+  // Handle background sync control
+  if (event.data && event.data.type === 'start-background-sync') {
+    console.log('🔄 Starting background sync for chat messages')
+
+    // Store initial state
+    if (event.data.lastMessageId) {
+      lastMessageId = event.data.lastMessageId
+    }
+    if (event.data.userIP) {
+      userIP = event.data.userIP
+    }
+
+    startBackgroundMessageChecking()
+  }
+
+  if (event.data && event.data.type === 'stop-background-sync') {
+    console.log('⏹️ Stopping background sync for chat messages')
+    stopBackgroundMessageChecking()
+  }
+
+  if (event.data && event.data.type === 'update-sync-state') {
+    console.log('📝 Updating sync state')
+    if (event.data.lastMessageId) {
+      lastMessageId = event.data.lastMessageId
+    }
+    if (event.data.userIP) {
+      userIP = event.data.userIP
+    }
+  }
+
+  // Debug message handlers
+  if (event.data && event.data.type === 'test-message') {
+    console.log('🧪 Test message received from main app:', event.data.timestamp)
+  }
+
+  if (event.data && event.data.type === 'force-check-messages') {
+    console.log('🔍 Forcing message check from debug panel')
+    checkForNewMessages()
   }
 })
 
