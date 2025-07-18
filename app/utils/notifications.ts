@@ -162,16 +162,94 @@ export class NotificationManager {
     }
   }
 
+  // iOS-compatible notification method using service worker
+  static async sendNotificationViaServiceWorker(data: NotificationData): Promise<boolean> {
+    console.log('📤 Sending notification via service worker:', data)
+
+    if (!('serviceWorker' in navigator)) {
+      console.error('❌ Service Worker not supported')
+      return false
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+
+      if (!registration) {
+        console.error('❌ Service Worker not ready')
+        return false
+      }
+
+      const options: NotificationOptions = {
+        body: data.body,
+        icon: data.icon || '/icon-192x192.png',
+        badge: data.badge || '/icon-192x192.png',
+        tag: data.tag,
+        data: data.data,
+        requireInteraction: data.requireInteraction,
+        silent: data.silent,
+      }
+
+      console.log('📱 Showing notification via service worker with options:', options)
+
+      // Use the message-based approach for better iOS compatibility
+      if (registration.active) {
+        registration.active.postMessage({
+          type: 'show-notification',
+          title: data.title,
+          options: options
+        })
+        console.log('✅ Service worker notification message sent')
+        return true
+      } else {
+        // Fallback to direct registration method
+        await registration.showNotification(data.title, options)
+        console.log('✅ Service worker notification sent successfully (direct)')
+        return true
+      }
+    } catch (error) {
+      console.error('💥 Error sending notification via service worker:', error)
+      return false
+    }
+  }
+
   static async sendNotification(data: NotificationData): Promise<Notification | null> {
     console.log('📤 Sending notification:', data)
 
-    const hasPermission = await this.ensurePermission()
-
-    if (!hasPermission) {
-      console.warn('⚠️ Notification permission not granted')
+    // First check if notifications are supported
+    if (!('Notification' in window)) {
+      console.error('❌ Notifications not supported in this browser')
       return null
     }
 
+    // Check current permission status
+    const currentPermission = Notification.permission
+    console.log('🔍 Current permission status:', currentPermission)
+
+    if (currentPermission === 'denied') {
+      console.warn('⚠️ Notification permission denied')
+      return null
+    }
+
+    if (currentPermission === 'default') {
+      console.log('📋 Permission not yet granted, requesting...')
+      const newPermission = await Notification.requestPermission()
+      if (newPermission !== 'granted') {
+        console.warn('⚠️ Notification permission not granted after request')
+        return null
+      }
+      console.log('✅ Permission granted!')
+    }
+
+    const iosInfo = getIOSInfo()
+
+    // On iOS, always use service worker for better compatibility
+    if (iosInfo.isIOS && iosInfo.isStandalone) {
+      console.log('🍎 Using service worker for iOS notification')
+      const success = await this.sendNotificationViaServiceWorker(data)
+      return success ? {} as Notification : null // Return a dummy notification object for compatibility
+    }
+
+    // Use regular Notification API for other platforms
     const options: NotificationOptions = {
       body: data.body,
       icon: data.icon || '/icon-192x192.png',
@@ -210,7 +288,10 @@ export class NotificationManager {
       return notification
     } catch (error) {
       console.error('💥 Error creating notification:', error)
-      return null
+      // Fallback to service worker if regular API fails
+      console.log('🔄 Falling back to service worker method')
+      const success = await this.sendNotificationViaServiceWorker(data)
+      return success ? {} as Notification : null
     }
   }
 
@@ -227,7 +308,7 @@ export class NotificationManager {
         title: data.title,
         body: data.body,
         // Remove unsupported properties on iOS
-        tag: undefined, // iOS doesn't support updating notifications
+        tag: data.tag, // Keep tag for iOS
         requireInteraction: true, // Always require interaction on iOS
         silent: false, // iOS doesn't support silent notifications reliably
         data: data.data,
