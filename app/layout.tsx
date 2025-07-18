@@ -60,6 +60,7 @@ export default function RootLayout({
                   <a href="/chat" className="text-gray-600 hover:text-gray-900">Chat</a>
                   <a href="/notifications" className="text-gray-600 hover:text-gray-900">Notifications</a>
                   <a href="/profile" className="text-gray-600 hover:text-gray-900">Profile</a>
+                  <a href="/test-background" className="text-gray-600 hover:text-gray-900 text-sm">Test</a>
                 </nav>
               </div>
             </div>

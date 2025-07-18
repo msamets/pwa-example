@@ -20,6 +20,10 @@ export default function BackgroundSyncDebug({
   const [serviceWorkerStatus, setServiceWorkerStatus] = useState<string>('Checking...')
   const [debugLogs, setDebugLogs] = useState<string[]>([])
   const [isExpanded, setIsExpanded] = useState(false)
+  const [backgroundSyncSupport, setBackgroundSyncSupport] = useState<{
+    sync: boolean,
+    periodicSync: boolean
+  }>({ sync: false, periodicSync: false })
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
@@ -34,6 +38,18 @@ export default function BackgroundSyncDebug({
           if (registration.active) {
             setServiceWorkerStatus('Active and Ready')
             addLog('Service Worker is active and ready')
+
+            // Check Background Sync API support
+            const syncSupport = 'sync' in registration
+            const periodicSyncSupport = 'periodicSync' in registration
+
+            setBackgroundSyncSupport({
+              sync: syncSupport,
+              periodicSync: periodicSyncSupport
+            })
+
+            addLog(`Background Sync: ${syncSupport ? 'Supported' : 'Not supported'}`)
+            addLog(`Periodic Sync: ${periodicSyncSupport ? 'Supported' : 'Not supported'}`)
           } else {
             setServiceWorkerStatus('Registered but not active')
             addLog('Service Worker registered but not active')
@@ -96,6 +112,39 @@ export default function BackgroundSyncDebug({
     }
   }
 
+  const testBackgroundSync = async () => {
+    if ('serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready
+        // Check if sync is available (with proper type casting)
+        if ('sync' in registration) {
+          await (registration as any).sync.register('test-sync')
+          addLog('Test background sync registered')
+        } else {
+          addLog('Background Sync API not supported')
+        }
+      } catch (error) {
+        addLog(`Error testing background sync: ${error}`)
+      }
+    }
+  }
+
+  const testNotification = async () => {
+    if ('serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready
+        await registration.showNotification('Test Notification', {
+          body: 'This is a test notification from the debug panel',
+          icon: '/icon-192x192.png',
+          tag: 'debug-test'
+        })
+        addLog('Test notification sent')
+      } catch (error) {
+        addLog(`Error sending test notification: ${error}`)
+      }
+    }
+  }
+
   if (!isExpanded) {
     return (
       <div className="fixed bottom-4 right-4 z-50">
@@ -110,7 +159,7 @@ export default function BackgroundSyncDebug({
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-4 max-w-sm">
+    <div className="fixed bottom-4 right-4 z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-4 max-w-sm max-h-96 overflow-y-auto">
       <div className="flex justify-between items-center mb-3">
         <h3 className="font-semibold text-sm">Background Sync Debug</h3>
         <button
@@ -149,6 +198,25 @@ export default function BackgroundSyncDebug({
           </div>
         </div>
 
+        {/* Background Sync API Support */}
+        <div className="border-t pt-2">
+          <div className="font-medium text-xs mb-1">API Support:</div>
+          <div className="grid grid-cols-2 gap-1 text-xs">
+            <div>
+              <span>Sync:</span>
+              <span className={`ml-1 ${backgroundSyncSupport.sync ? 'text-green-600' : 'text-red-600'}`}>
+                {backgroundSyncSupport.sync ? '✓' : '✗'}
+              </span>
+            </div>
+            <div>
+              <span>Periodic:</span>
+              <span className={`ml-1 ${backgroundSyncSupport.periodicSync ? 'text-green-600' : 'text-red-600'}`}>
+                {backgroundSyncSupport.periodicSync ? '✓' : '✗'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div className="text-xs">
           <span className="font-medium">User IP:</span> {userIP || 'Not set'}
         </div>
@@ -156,7 +224,7 @@ export default function BackgroundSyncDebug({
           <span className="font-medium">Last Message ID:</span> {lastMessageId || 'None'}
         </div>
 
-        <div className="flex space-x-2 mt-3">
+        <div className="flex flex-wrap gap-1 mt-3">
           <button
             onClick={testServiceWorkerMessage}
             className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
@@ -168,6 +236,18 @@ export default function BackgroundSyncDebug({
             className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
           >
             Force Check
+          </button>
+          <button
+            onClick={testBackgroundSync}
+            className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200"
+          >
+            Test Sync
+          </button>
+          <button
+            onClick={testNotification}
+            className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs hover:bg-orange-200"
+          >
+            Test Notif
           </button>
         </div>
 

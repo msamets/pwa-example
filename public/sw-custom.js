@@ -1,5 +1,5 @@
 // Custom Service Worker for Job Seeker PWA
-// This service worker handles caching, offline functionality, and most importantly - notifications
+// This service worker handles caching, offline functionality, and background notifications using Background Sync API
 
 const CACHE_NAME = 'job-seeker-v1'
 const STATIC_CACHE_URLS = [
@@ -7,6 +7,7 @@ const STATIC_CACHE_URLS = [
   '/jobs',
   '/profile',
   '/notifications',
+  '/chat',
   '/manifest.json',
   '/icon-192x192.png',
   '/icon-512x512.png'
@@ -14,9 +15,8 @@ const STATIC_CACHE_URLS = [
 
 // Background message checking variables
 let lastMessageId = null
-let backgroundCheckInterval = null
-let isBackgroundCheckingActive = false
 let userIP = null
+let isBackgroundSyncEnabled = false
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -38,13 +38,14 @@ self.addEventListener('install', (event) => {
   )
 })
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and setup background sync
 self.addEventListener('activate', (event) => {
   console.log('🚀 Service Worker activating...')
 
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
+    Promise.all([
+      // Clean up old caches
+      caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
             if (cacheName !== CACHE_NAME) {
@@ -53,13 +54,31 @@ self.addEventListener('activate', (event) => {
             }
           })
         )
-      })
-      .then(() => {
-        console.log('✅ Service Worker activated')
-        return self.clients.claim()
-      })
+      }),
+      // Claim all clients
+      self.clients.claim(),
+      // Setup periodic background sync if supported
+      setupPeriodicBackgroundSync()
+    ])
   )
 })
+
+// Setup Periodic Background Sync (for when app is completely closed)
+async function setupPeriodicBackgroundSync() {
+  try {
+    if ('periodicSync' in self.registration) {
+      console.log('🔄 Registering periodic background sync...')
+      await self.registration.periodicSync.register('check-messages', {
+        minInterval: 60000 // Check every minute when app is closed
+      })
+      console.log('✅ Periodic background sync registered')
+    } else {
+      console.log('⚠️ Periodic Background Sync not supported')
+    }
+  } catch (error) {
+    console.error('❌ Failed to register periodic sync:', error)
+  }
+}
 
 // Fetch event - serve from cache with network fallback
 self.addEventListener('fetch', (event) => {
@@ -110,7 +129,7 @@ self.addEventListener('fetch', (event) => {
 // Background message checking function
 async function checkForNewMessages() {
   try {
-    console.log('📡 Checking for new messages in background...', { lastMessageId, userIP })
+    console.log('📡 Checking for new messages...', { lastMessageId, userIP, timestamp: new Date().toISOString() })
 
     const url = lastMessageId
       ? `${self.location.origin}/api/chat/messages?lastMessageId=${lastMessageId}`
@@ -119,7 +138,7 @@ async function checkForNewMessages() {
     const response = await fetch(url)
     if (!response.ok) {
       console.error('❌ Failed to fetch messages:', response.status)
-      return
+      return false
     }
 
     const data = await response.json()
@@ -144,7 +163,8 @@ async function checkForNewMessages() {
             icon: '/icon-192x192.png',
             badge: '/icon-192x192.png',
             tag: 'chat-message',
-            requireInteraction: false,
+            requireInteraction: true, // Keep notification visible
+            silent: false,
             data: {
               type: 'chat-message',
               messageId: message.id,
@@ -163,9 +183,13 @@ async function checkForNewMessages() {
 
       // Notify main app about new messages if it's listening
       notifyMainAppOfNewMessages(data.messages)
+      return true
     }
+
+    return false
   } catch (error) {
     console.error('❌ Error checking for new messages:', error)
+    return false
   }
 }
 
@@ -181,39 +205,59 @@ function notifyMainAppOfNewMessages(messages) {
   })
 }
 
-// Start background message checking
-function startBackgroundMessageChecking() {
-  if (isBackgroundCheckingActive) {
-    console.log('⚠️ Background checking already active')
-    return
+// Background Sync event - triggered when network connectivity returns
+self.addEventListener('sync', (event) => {
+  console.log('🔄 Background sync event triggered:', event.tag)
+
+  if (event.tag === 'check-messages') {
+    event.waitUntil(
+      checkForNewMessages().then((hasNewMessages) => {
+        console.log('📊 Background sync completed, new messages:', hasNewMessages)
+
+        // Schedule another check in a few seconds
+        if (isBackgroundSyncEnabled) {
+          scheduleNextBackgroundCheck()
+        }
+      })
+    )
   }
+})
 
-  console.log('🚀 Starting background message checking...')
-  isBackgroundCheckingActive = true
+// Periodic Background Sync event - for regular checks when app is completely closed
+self.addEventListener('periodicsync', (event) => {
+  console.log('⏰ Periodic background sync event triggered:', event.tag)
 
-  // Check immediately
-  checkForNewMessages()
+  if (event.tag === 'check-messages') {
+    event.waitUntil(
+      checkForNewMessages().then((hasNewMessages) => {
+        console.log('📊 Periodic sync completed, new messages:', hasNewMessages)
+      })
+    )
+  }
+})
 
-  // Then check every 5 seconds
-  backgroundCheckInterval = setInterval(checkForNewMessages, 5000)
+// Schedule the next background check using registration.sync
+function scheduleNextBackgroundCheck() {
+  if (isBackgroundSyncEnabled && 'sync' in self.registration) {
+    // Use a timeout to register sync after a delay
+    setTimeout(() => {
+      self.registration.sync.register('check-messages').then(() => {
+        console.log('⏰ Scheduled next background message check')
+      }).catch(error => {
+        console.error('❌ Failed to schedule background check:', error)
+      })
+    }, 5000) // Schedule next check in 5 seconds
+  }
 }
 
-// Stop background message checking
-function stopBackgroundMessageChecking() {
-  if (!isBackgroundCheckingActive) {
-    return
-  }
-
-  console.log('🛑 Stopping background message checking...')
-  isBackgroundCheckingActive = false
-
-  if (backgroundCheckInterval) {
-    clearInterval(backgroundCheckInterval)
-    backgroundCheckInterval = null
-  }
+// Keep service worker alive with periodic tasks
+function keepServiceWorkerAlive() {
+  setInterval(() => {
+    console.log('💓 Service Worker heartbeat:', new Date().toISOString())
+  }, 30000) // Every 30 seconds
 }
 
-// ✨ ENHANCED MESSAGE HANDLING ✨
+// Enhanced message handling
 self.addEventListener('message', (event) => {
   console.log('📨 Service Worker received message:', event.data)
 
@@ -256,12 +300,30 @@ self.addEventListener('message', (event) => {
       userIP = event.data.userIP
     }
 
-    startBackgroundMessageChecking()
+    isBackgroundSyncEnabled = true
+
+    // Register background sync immediately
+    if ('sync' in self.registration) {
+      self.registration.sync.register('check-messages').then(() => {
+        console.log('✅ Background sync registered')
+        // Start the scheduling cycle
+        scheduleNextBackgroundCheck()
+      }).catch(error => {
+        console.error('❌ Failed to register background sync:', error)
+      })
+    } else {
+      console.log('⚠️ Background Sync API not supported, using fallback')
+      // Fallback to periodic checks (will be throttled but better than nothing)
+      startFallbackBackgroundChecking()
+    }
+
+    // Keep service worker alive
+    keepServiceWorkerAlive()
   }
 
   if (event.data && event.data.type === 'stop-background-sync') {
     console.log('⏹️ Stopping background sync for chat messages')
-    stopBackgroundMessageChecking()
+    isBackgroundSyncEnabled = false
   }
 
   if (event.data && event.data.type === 'update-sync-state') {
@@ -285,6 +347,23 @@ self.addEventListener('message', (event) => {
   }
 })
 
+// Fallback background checking for browsers without Background Sync API
+function startFallbackBackgroundChecking() {
+  console.log('🔄 Starting fallback background checking...')
+
+  const fallbackCheck = () => {
+    if (isBackgroundSyncEnabled) {
+      checkForNewMessages().then(() => {
+        // Schedule next check (will be throttled by browser but still works)
+        setTimeout(fallbackCheck, 30000) // Every 30 seconds (browsers may throttle this)
+      })
+    }
+  }
+
+  // Start the fallback cycle
+  fallbackCheck()
+}
+
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
   console.log('👆 Notification clicked:', event.notification)
@@ -303,9 +382,7 @@ self.addEventListener('notificationclick', (event) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin)) {
             console.log('🔍 Found existing client, focusing and navigating')
-            client.focus()
-            client.navigate(redirectUrl)
-            return
+            return client.focus().then(() => client.navigate(redirectUrl))
           }
         }
 
@@ -324,7 +401,7 @@ self.addEventListener('notificationclose', (event) => {
   console.log('❌ Notification closed:', event.notification)
 })
 
-// Handle push events (for server-sent notifications)
+// Handle push events (for future server-sent notifications)
 self.addEventListener('push', (event) => {
   console.log('📨 Push message received:', event)
 
@@ -360,4 +437,4 @@ self.addEventListener('push', (event) => {
   }
 })
 
-console.log('🚀 Custom Service Worker loaded and ready!')
+console.log('🚀 Custom Service Worker with Background Sync loaded and ready!')

@@ -117,7 +117,7 @@ export default function ChatPage() {
     const handleVisibilityChange = async () => {
       const isVisible = !document.hidden
       setIsPageVisible(isVisible)
-      console.log('📄 Page visibility changed:', isVisible)
+      console.log('📄 Page visibility changed:', isVisible, 'at', new Date().toISOString())
 
       if (isVisible) {
         // Page became visible - stop background sync and start regular polling
@@ -147,13 +147,33 @@ export default function ChatPage() {
       }
     }
 
+    // Additional beforeunload event for when user navigates away
+    const handleBeforeUnload = async () => {
+      console.log('🚪 Page unloading, ensuring background sync is active')
+      if (notificationPermission === 'granted') {
+        await startBackgroundSync()
+      }
+    }
+
+    // Pagehide event for better mobile support
+    const handlePageHide = async () => {
+      console.log('👻 Page hidden via pagehide event')
+      if (notificationPermission === 'granted') {
+        await startBackgroundSync()
+      }
+    }
+
     window.addEventListener('focus', handleFocus)
     window.addEventListener('blur', handleBlur)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('pagehide', handlePageHide)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('blur', handleBlur)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('pagehide', handlePageHide)
     }
   }, [notificationPermission, userIP])
 
@@ -171,6 +191,14 @@ export default function ChatPage() {
 
     updateBackgroundSync()
   }, [notificationPermission, isPageVisible])
+
+  // Auto-start background sync when user IP is available and page is hidden
+  useEffect(() => {
+    if (userIP && !isPageVisible && notificationPermission === 'granted' && !isBackgroundSyncActive) {
+      console.log('🔄 Auto-starting background sync for user:', userIP)
+      startBackgroundSync()
+    }
+  }, [userIP, isPageVisible, notificationPermission, isBackgroundSyncActive])
 
   // Fetch messages from the API
   const fetchMessages = async (lastMessageId?: string) => {
