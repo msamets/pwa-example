@@ -250,14 +250,17 @@ export default function FCMTestPanel() {
     setIsLoading(true)
     try {
       addTestResult('🔗 Testing deeplink notification...')
+      addTestResult(`🔧 Using FCM token: ${fcmToken.substring(0, 20)}...`)
+
       const success = await NotificationManager.sendFCMNotification({
         title: 'Profile Update Required 👤',
         body: 'Tap to complete your profile and increase your job match rate!',
         type: 'deeplink-test',
         tag: 'fcm-test-deeplink',
         data: {
-          type: 'deeplink',
+          type: 'deeplink-test',
           redirectUrl: '/profile',
+          url: '/profile', // Add both for compatibility
           action: 'navigate'
         },
         actions: [
@@ -268,7 +271,8 @@ export default function FCMTestPanel() {
 
       if (success) {
         addTestResult('✅ Deeplink notification sent successfully')
-        addTestResult('💡 Click the notification to test deeplink navigation to /profile')
+        addTestResult('💡 Click the notification or action button to test deeplink navigation to /profile')
+        addTestResult('🔍 Check browser console for service worker debug logs')
       } else {
         addTestResult('❌ Deeplink notification failed')
       }

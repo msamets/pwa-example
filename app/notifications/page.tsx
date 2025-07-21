@@ -7,7 +7,7 @@ import IOSDebugInfo from '../components/IOSDebugInfo'
 import ConsoleLogger from '../components/ConsoleLogger'
 import FCMTestPanel from '../components/FCMTestPanel'
 import FCMDebugger from '../components/FCMDebugger'
-import { getIOSInfo } from '../utils/notifications'
+import { getIOSInfo, setupNotificationClickHandlers } from '../utils/notifications'
 
 export default function NotificationsPage() {
   const [permission, setPermission] = useState<NotificationPermission>('default')
@@ -26,6 +26,9 @@ export default function NotificationsPage() {
     const iosInfo = getIOSInfo()
     setShowIOSDebug(iosInfo.isIOS)
 
+    // Initialize notification click handlers for deeplink navigation
+    setupNotificationClickHandlers()
+
     // Add initial debug message to console
     console.log('🚀 Notifications page loaded')
     console.log('📱 User Agent:', navigator.userAgent)
@@ -33,6 +36,7 @@ export default function NotificationsPage() {
     console.log('🍎 iOS Info:', iosInfo)
     console.log('⚙️ Service Worker support:', 'serviceWorker' in navigator)
     console.log('🔐 Current permission:', 'Notification' in window ? Notification.permission : 'N/A')
+    console.log('🔗 Notification click handlers initialized')
   }, [])
 
   const handlePermissionChange = (newPermission: NotificationPermission) => {

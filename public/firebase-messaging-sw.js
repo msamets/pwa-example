@@ -98,7 +98,13 @@ messaging.onBackgroundMessage((payload) => {
 
 // Handle notification click events
 self.addEventListener('notificationclick', (event) => {
-  console.log('👆 Notification click received:', event)
+  console.log('👆 FCM Notification click received:', event)
+  console.log('🔍 Event details:', {
+    action: event.action,
+    notificationData: event.notification.data,
+    notificationTitle: event.notification.title,
+    notificationBody: event.notification.body
+  })
 
   const notification = event.notification
   const action = event.action
@@ -155,9 +161,25 @@ self.addEventListener('notificationclick', (event) => {
         targetUrl = data.replyUrl || `${baseUrl}/profile?action=reply&appId=${data.applicationId || ''}`
         break
 
+      case 'go-to-profile':
+        // Handle the specific deeplink test action
+        targetUrl = data.redirectUrl || `${baseUrl}/profile`
+        console.log('📍 Go-to-profile action triggered, redirecting to:', targetUrl)
+        break
+
+      case 'dismiss':
+        // Just close the notification, no navigation
+        console.log('❌ Notification dismissed, no navigation')
+        return
+
       default:
         // Default click behavior - open the app at specified URL or home
         targetUrl = data.url || data.redirectUrl || baseUrl
+        console.log('🔗 Default case triggered. Data:', {
+          url: data.url,
+          redirectUrl: data.redirectUrl,
+          finalTargetUrl: targetUrl
+        })
     }
 
     // Add notification tracking parameters

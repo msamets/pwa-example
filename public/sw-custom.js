@@ -10,8 +10,7 @@ const STATIC_CACHE_URLS = [
   '/chat',
   '/manifest.json',
   '/icon-192x192.png',
-  '/icon-512x512.png',
-  '/firebase-messaging-sw.js'
+  '/icon-512x512.png'
 ]
 
 // Background message checking variables
@@ -20,9 +19,60 @@ let userIP = null
 let isBackgroundSyncEnabled = false
 let fcmIntegrationEnabled = false
 
+// Import Firebase for FCM handling
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js')
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBdlQ043SPZuNfbT4RM3B07JLSxNL9rIsc",
+  authDomain: "jobseeker-pwa.firebaseapp.com",
+  projectId: "jobseeker-pwa",
+  storageBucket: "jobseeker-pwa.firebasestorage.app",
+  messagingSenderId: "1011116688933",
+  appId: "1:1011116688933:web:bfb8b314d3a81c6b78e1cc"
+}
+
+// Initialize Firebase in service worker
+firebase.initializeApp(firebaseConfig)
+const messaging = firebase.messaging()
+
+console.log('🔥 Custom Service Worker with FCM integration initialized')
+
+// Handle FCM background messages
+messaging.onBackgroundMessage((payload) => {
+  console.log('📨 FCM Background message received:', payload)
+
+  const { title, body, icon, image } = payload.notification || {}
+  const data = payload.data || {}
+
+  // Show notification with proper data structure
+  const notificationOptions = {
+    body: body || 'You have a new notification',
+    icon: icon || '/icon-192x192.png',
+    badge: '/icon-192x192.png',
+    image: image,
+    data: {
+      ...data,
+      messageId: payload.messageId || Date.now().toString(),
+      sentTime: payload.sentTime,
+      from: payload.from,
+      // Ensure redirectUrl is preserved
+      redirectUrl: data.redirectUrl || data.url
+    },
+    tag: data.tag || 'job-seeker-notification',
+    requireInteraction: data.requireInteraction === 'true' || true,
+    silent: data.silent === 'true' || false,
+    actions: data.actions ? JSON.parse(data.actions) : []
+  }
+
+  console.log('🔔 Showing FCM notification with data:', notificationOptions.data)
+
+  return self.registration.showNotification(title || 'Job Seeker', notificationOptions)
+})
+
 // Import FCM functionality
-// Note: FCM background handling is primarily done in firebase-messaging-sw.js
-// This service worker focuses on caching and offline functionality
+// Note: FCM background handling is now integrated into this service worker
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -463,46 +513,70 @@ function keepServiceWorkerAlive() {
   }, 30000) // Every 30 seconds
 }
 
-// Handle notification clicks
+// Handle notification clicks (unified for both FCM and local notifications)
 self.addEventListener('notificationclick', (event) => {
-  console.log('👆 Notification clicked:', event.notification)
+  console.log('👆 UNIFIED SW Notification clicked:', event.notification)
+  console.log('🔍 Action:', event.action)
+  console.log('🔍 Notification data:', event.notification.data)
 
   // Close the notification
   event.notification.close()
 
-  // Get redirect URL from notification data
-  const redirectUrl = event.notification.data?.redirectUrl || '/'
+  const data = event.notification.data || {}
+  const action = event.action
+  const baseUrl = self.location.origin
+
+  // Handle specific actions first
+  if (action === 'go-to-profile') {
+    const targetUrl = data.redirectUrl || `${baseUrl}/profile`
+    console.log('📍 Go-to-profile action triggered, redirecting to:', targetUrl)
+    return event.waitUntil(handleNavigation(targetUrl, data))
+  }
+
+  if (action === 'dismiss') {
+    console.log('❌ Notification dismissed, no navigation')
+    return
+  }
+
+  // Default click behavior - get redirect URL from notification data
+  const redirectUrl = data.redirectUrl || data.url || '/'
   const fullUrl = new URL(redirectUrl, self.location.origin).href
 
-  console.log('🔗 Redirect URL:', redirectUrl, 'Full URL:', fullUrl)
+  console.log('🔗 Default navigation - Redirect URL:', redirectUrl, 'Full URL:', fullUrl)
 
   // Focus or open the app
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // If app is already open, focus it and send navigation message
-        for (const client of clientList) {
-          if (client.url.includes(self.location.origin)) {
-            console.log('🔍 Found existing client, focusing and sending navigation message')
-            return client.focus().then(() => {
-              // Send navigation message to client instead of using client.navigate()
-              return client.postMessage({
-                type: 'navigate',
-                url: redirectUrl,
-                notificationData: event.notification.data
-              })
-            })
-          }
-        }
+  event.waitUntil(handleNavigation(fullUrl, data))
 
-        // If app is not open, open it
-        console.log('🚀 Opening new client window')
-        return clients.openWindow(fullUrl)
-      })
-      .catch((error) => {
-        console.error('❌ Error handling notification click:', error)
-      })
-  )
+// Helper function to handle navigation
+async function handleNavigation(targetUrl, notificationData) {
+  try {
+    console.log('🚀 Handling navigation to:', targetUrl)
+
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+    // If app is already open, focus it and send navigation message
+    for (const client of clients) {
+      if (client.url.includes(self.location.origin)) {
+        console.log('🔍 Found existing client, focusing and sending navigation message')
+        await client.focus()
+
+        // Send navigation message to client
+        client.postMessage({
+          type: 'navigate',
+          url: targetUrl,
+          notificationData: notificationData
+        })
+        return
+      }
+    }
+
+    // If app is not open, open it
+    console.log('🚀 Opening new client window:', targetUrl)
+    return self.clients.openWindow(targetUrl)
+  } catch (error) {
+    console.error('❌ Error handling navigation:', error)
+  }
+}
 })
 
 // Handle notification close

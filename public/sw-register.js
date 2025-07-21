@@ -15,16 +15,15 @@
       .then(function(registration) {
         console.log('✅ Custom Service Worker registered successfully:', registration.scope)
 
-        // Also register Firebase messaging service worker
-        return navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-          scope: '/firebase-cloud-messaging-push-scope'
-        })
+        // FCM handling is now integrated into the main custom service worker
+        console.log('✅ Using unified service worker approach for FCM and custom functionality')
+        return registration
       })
-      .then(function(fcmRegistration) {
-        console.log('✅ Firebase Messaging Service Worker registered successfully:', fcmRegistration.scope)
+      .then(function(registration) {
+        console.log('✅ Unified Service Worker ready for offline use and FCM')
 
         // Check for updates on main service worker
-        const mainRegistration = fcmRegistration || registration
+        const mainRegistration = registration
         mainRegistration.addEventListener('updatefound', function() {
           const newWorker = mainRegistration.installing
           console.log('🔄 New service worker found, installing...')
