@@ -512,13 +512,13 @@ export default function ChatPage() {
       </div>
 
       {/* Debug Component */}
-      <BackgroundSyncDebug
+      {/* <BackgroundSyncDebug
         isBackgroundSyncActive={isBackgroundSyncActive}
         isPageVisible={isPageVisible}
         notificationPermission={notificationPermission}
         lastMessageId={lastMessageIdRef.current}
         userIP={userIP}
-      />
+      /> */}
     </div>
   )
 }

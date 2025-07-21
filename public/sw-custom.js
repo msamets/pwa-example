@@ -1,7 +1,7 @@
 // Custom Service Worker for Job Seeker PWA
-// This service worker handles caching, offline functionality, and background notifications using Background Sync API
+// This service worker handles caching, offline functionality, and FCM integration
 
-const CACHE_NAME = 'job-seeker-v1'
+const CACHE_NAME = 'job-seeker-v2-fcm'
 const STATIC_CACHE_URLS = [
   '/',
   '/jobs',
@@ -10,13 +10,19 @@ const STATIC_CACHE_URLS = [
   '/chat',
   '/manifest.json',
   '/icon-192x192.png',
-  '/icon-512x512.png'
+  '/icon-512x512.png',
+  '/firebase-messaging-sw.js'
 ]
 
 // Background message checking variables
 let lastMessageId = null
 let userIP = null
 let isBackgroundSyncEnabled = false
+let fcmIntegrationEnabled = false
+
+// Import FCM functionality
+// Note: FCM background handling is primarily done in firebase-messaging-sw.js
+// This service worker focuses on caching and offline functionality
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {

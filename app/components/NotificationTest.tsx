@@ -426,7 +426,7 @@ export default function NotificationTest() {
 
       if (isIOS) {
         // Test service worker method for iOS
-        const success = await NotificationManager.sendNotificationViaServiceWorker({
+        const success = await NotificationManager.sendLocalNotification({
           title: 'Step-by-Step Test',
           body: 'This is a test notification created step by step',
           icon: '/icon-192x192.png',

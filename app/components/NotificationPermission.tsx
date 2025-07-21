@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getIOSInfo, NotificationManager } from '../utils/notifications'
+import FCMManager from '../../lib/firebase'
 
 interface NotificationPermissionProps {
   currentPermission: NotificationPermission
@@ -16,6 +17,15 @@ export default function NotificationPermission({
   const [iosInfo, setIOSInfo] = useState<any>(null)
   const [compatibilityCheck, setCompatibilityCheck] = useState<any>(null)
   const [debugMode, setDebugMode] = useState(false)
+  const [fcmStatus, setFcmStatus] = useState<{
+    initialized: boolean
+    token: string | null
+    error: string | null
+  }>({
+    initialized: false,
+    token: null,
+    error: null
+  })
 
   useEffect(() => {
     // Only run iOS detection on the client side
@@ -25,10 +35,44 @@ export default function NotificationPermission({
 
       console.log('🔍 NotificationPermission iOS Info:', info)
 
-      NotificationManager.checkIOSCompatibility().then(compatibility => {
-        setCompatibilityCheck(compatibility)
-        console.log('🔍 NotificationPermission Compatibility:', compatibility)
-      })
+      // Initialize FCM and compatibility check
+      const initializeFCM = async () => {
+        try {
+          // Check compatibility
+          const compatibility = await NotificationManager.checkIOSCompatibility()
+          setCompatibilityCheck(compatibility)
+          console.log('🔍 NotificationPermission Compatibility:', compatibility)
+
+          // Initialize FCM if compatible
+          if (compatibility.canUseNotifications) {
+            console.log('🚀 Initializing FCM in NotificationPermission...')
+            const result = await NotificationManager.initialize()
+
+            setFcmStatus({
+              initialized: result.success,
+              token: result.token || null,
+              error: result.error || null
+            })
+
+            if (result.success) {
+              console.log('✅ FCM initialized successfully in NotificationPermission')
+            } else {
+              console.warn('⚠️ FCM initialization failed:', result.error)
+            }
+          } else {
+            console.log('⏭️ Skipping FCM initialization due to compatibility issues')
+          }
+        } catch (error) {
+          console.error('💥 Error during FCM initialization:', error)
+          setFcmStatus({
+            initialized: false,
+            token: null,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          })
+        }
+      }
+
+      initializeFCM()
     }
   }, [])
 
@@ -36,29 +80,82 @@ export default function NotificationPermission({
     setIsRequesting(true)
 
     try {
-      const result = await NotificationManager.ensurePermissionWithIOSSupport()
+      console.log('📱 Requesting FCM permission and token...')
 
-      if (result.success && result.permission) {
-        onPermissionChange(result.permission)
+      // Initialize FCM and get token
+      const result = await NotificationManager.initialize()
 
-        if (result.permission === 'granted') {
-          // Show welcome notification
-          await NotificationManager.sendIOSOptimizedNotification({
-            title: 'Notifications Enabled! 🎉',
-            body: 'You will now receive job alerts and updates.',
-            data: { type: 'welcome' }
+      if (result.success && result.token) {
+        // Update FCM status
+        setFcmStatus({
+          initialized: true,
+          token: result.token,
+          error: null
+        })
+
+        // Update permission status
+        const permission = await NotificationManager.checkPermission()
+        onPermissionChange(permission)
+
+        console.log('✅ FCM token obtained and saved')
+
+        // Show welcome notification using FCM
+        if (permission === 'granted') {
+          // Send via FCM server (background notification)
+          await NotificationManager.sendFCMNotification({
+            title: 'FCM Notifications Enabled! 🎉',
+            body: 'You will now receive job alerts and updates even when the app is closed.',
+            type: 'welcome',
+            data: {
+              type: 'welcome',
+              url: '/notifications?from=fcm-welcome'
+            }
+          })
+
+          // Also show immediate local notification
+          await NotificationManager.sendLocalNotification({
+            title: 'Welcome to Job Seeker! 🎯',
+            body: 'Push notifications are now active. You\'ll get alerts for new jobs, interviews, and more!',
+            type: 'welcome',
+            data: { type: 'welcome' },
+            actions: [
+              { action: 'explore', title: '🔍 Explore Jobs' },
+              { action: 'settings', title: '⚙️ Settings' }
+            ]
           })
         }
       } else {
-        if (result.needsInstall) {
-          alert('Please install this app to your home screen first to enable notifications.')
+        console.error('❌ Failed to get FCM token:', result.error)
+
+        setFcmStatus({
+          initialized: false,
+          token: null,
+          error: result.error || 'Failed to initialize FCM'
+        })
+
+        // Fallback to standard permission request
+        const fallbackResult = await NotificationManager.ensurePermissionWithIOSSupport()
+
+        if (fallbackResult.success && fallbackResult.permission) {
+          onPermissionChange(fallbackResult.permission)
+
+          if (fallbackResult.needsInstall) {
+            alert('Please install this app to your home screen first to enable notifications.')
+          }
         } else {
-          alert(`Cannot enable notifications: ${result.error}`)
+          alert(`Cannot enable notifications: ${fallbackResult.error}`)
         }
       }
     } catch (error: unknown) {
-      console.error('Error requesting notification permission:', error)
-      alert('Error requesting notification permission. Please try again.')
+      console.error('💥 Error requesting FCM permission:', error)
+
+      setFcmStatus({
+        initialized: false,
+        token: null,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+
+      alert('Error enabling notifications. Please check your browser settings and try again.')
     } finally {
       setIsRequesting(false)
     }
@@ -219,14 +316,69 @@ Or:
         </div>
       )}
 
+      {/* FCM Status (Debug Info) */}
+      {debugMode && (
+        <div className="mt-4 p-3 bg-gray-900 text-green-400 rounded text-xs font-mono">
+          <div>FCM Initialized: {String(fcmStatus.initialized)}</div>
+          <div>FCM Token: {fcmStatus.token ? fcmStatus.token.substring(0, 20) + '...' : 'None'}</div>
+          <div>FCM Error: {fcmStatus.error || 'None'}</div>
+          <div>Permission: {currentPermission}</div>
+        </div>
+      )}
+
+      {/* FCM Status Indicator */}
+      {currentPermission === 'granted' && (
+        <div className={`mt-4 p-3 rounded-md ${
+          fcmStatus.initialized
+            ? 'bg-green-50 border border-green-200'
+            : 'bg-yellow-50 border border-yellow-200'
+        }`}>
+          <div className="flex items-center">
+            <span className="text-lg mr-2">
+              {fcmStatus.initialized ? '✅' : '⚠️'}
+            </span>
+            <div>
+              <h5 className={`font-medium ${
+                fcmStatus.initialized ? 'text-green-900' : 'text-yellow-900'
+              }`}>
+                {fcmStatus.initialized ? 'FCM Active' : 'FCM Setup Needed'}
+              </h5>
+              <p className={`text-sm ${
+                fcmStatus.initialized ? 'text-green-700' : 'text-yellow-700'
+              }`}>
+                {fcmStatus.initialized
+                  ? 'You\'ll receive notifications even when the app is closed'
+                  : fcmStatus.error || 'Cloud messaging setup incomplete'
+                }
+              </p>
+            </div>
+          </div>
+
+          {!fcmStatus.initialized && (
+            <button
+              onClick={requestPermission}
+              disabled={isRequesting}
+              className="mt-2 px-3 py-1 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-700 disabled:opacity-50"
+            >
+              {isRequesting ? 'Setting up...' : 'Setup FCM'}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Benefits */}
       <div className="mt-4 bg-gray-50 rounded-md p-3">
-        <h5 className="font-medium text-gray-900 mb-2">Why enable notifications?</h5>
+        <h5 className="font-medium text-gray-900 mb-2">
+          {fcmStatus.initialized ? 'FCM Notifications Active 🚀' : 'Why enable notifications?'}
+        </h5>
         <ul className="text-sm text-gray-600 space-y-1">
           <li>• Get instant alerts for new job matches</li>
           <li>• Receive application status updates</li>
           <li>• Stay informed about interview invitations</li>
           <li>• Never miss important deadlines</li>
+          {fcmStatus.initialized && (
+            <li className="text-green-600 font-medium">• ✨ Works even when app is closed!</li>
+          )}
         </ul>
       </div>
     </div>

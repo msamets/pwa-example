@@ -1,22 +1,32 @@
-// Manual Service Worker Registration for Job Seeker PWA
-// This ensures our custom service worker with notification support is loaded
+// Service Worker Registration for Job Seeker PWA with FCM
+// This registers both the custom SW and Firebase messaging SW
 
 (function() {
   'use strict';
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      console.log('🔧 Registering custom service worker...')
+      console.log('🔧 Registering service workers...')
 
+      // Register main custom service worker
       navigator.serviceWorker.register('/sw-custom.js', {
         scope: '/'
       })
       .then(function(registration) {
-        console.log('✅ Service Worker registered successfully:', registration.scope)
+        console.log('✅ Custom Service Worker registered successfully:', registration.scope)
 
-        // Check for updates
-        registration.addEventListener('updatefound', function() {
-          const newWorker = registration.installing
+        // Also register Firebase messaging service worker
+        return navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+          scope: '/firebase-cloud-messaging-push-scope'
+        })
+      })
+      .then(function(fcmRegistration) {
+        console.log('✅ Firebase Messaging Service Worker registered successfully:', fcmRegistration.scope)
+
+        // Check for updates on main service worker
+        const mainRegistration = fcmRegistration || registration
+        mainRegistration.addEventListener('updatefound', function() {
+          const newWorker = mainRegistration.installing
           console.log('🔄 New service worker found, installing...')
 
           newWorker.addEventListener('statechange', function() {
@@ -26,7 +36,7 @@
                 // Optionally show update notification
                 showUpdateNotification()
               } else {
-                console.log('🎉 Service worker ready for offline use')
+                console.log('🎉 Service workers ready for offline use and FCM')
               }
             }
           })

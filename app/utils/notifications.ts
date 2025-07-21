@@ -1,4 +1,5 @@
-// Notification utility functions for the Job Seeker PWA
+// FCM-Enhanced Notification utility functions for the Job Seeker PWA
+import FCMManager, { FCMTokenResult } from '../../lib/firebase'
 
 export interface NotificationData {
   title: string
@@ -9,10 +10,34 @@ export interface NotificationData {
   data?: any
   requireInteraction?: boolean
   silent?: boolean
+  actions?: Array<{action: string, title: string}>
+  type?: string
+}
+
+export interface FCMNotificationPayload {
+  notification?: {
+    title: string
+    body: string
+    icon?: string
+    image?: string
+  }
+  data?: Record<string, string>
+  token?: string
+  tokens?: string[]
+  topic?: string
 }
 
 // Enhanced iOS detection and compatibility
 export function getIOSInfo() {
+  if (typeof window === 'undefined') {
+    return {
+      isIOS: false,
+      isStandalone: false,
+      version: null,
+      supportsNotifications: false
+    }
+  }
+
   const userAgent = window.navigator.userAgent.toLowerCase()
   const isIOS = /iphone|ipad|ipod/.test(userAgent)
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
@@ -39,6 +64,84 @@ export function getIOSInfo() {
 }
 
 export class NotificationManager {
+  private static fcmToken: string | null = null
+  private static isInitialized = false
+
+  // Reset FCM state (useful for debugging and recovery)
+  static reset(): void {
+    console.log('🔄 Resetting NotificationManager state...')
+    this.fcmToken = null
+    this.isInitialized = false
+    FCMManager.reset()
+  }
+
+  // Initialize FCM and get token
+  static async initialize(): Promise<{success: boolean, token?: string, error?: string}> {
+    try {
+      if (this.isInitialized && this.fcmToken) {
+        console.log('✅ FCM already initialized, returning existing token')
+        return { success: true, token: this.fcmToken }
+      }
+
+      console.log('🚀 Initializing FCM NotificationManager...')
+
+      // Initialize FCM
+      console.log('🔧 Calling FCMManager.initialize()...')
+      const initialized = await FCMManager.initialize()
+      console.log('📊 FCMManager.initialize() result:', initialized)
+
+      if (!initialized) {
+        console.error('❌ FCMManager.initialize() returned false')
+        // Reset our state too since FCM failed
+        this.fcmToken = null
+        this.isInitialized = false
+        return { success: false, error: 'FCM initialization failed - check console for detailed error logs' }
+      }
+
+      console.log('✅ FCM basic initialization successful, getting token...')
+
+      // Get FCM token
+      console.log('🔧 Calling FCMManager.requestPermissionAndGetToken()...')
+      const tokenResult = await FCMManager.requestPermissionAndGetToken()
+      console.log('📊 Token result:', {
+        success: tokenResult.success,
+        hasToken: !!tokenResult.token,
+        error: tokenResult.error,
+        tokenPreview: tokenResult.token?.substring(0, 20) + '...'
+      })
+
+      if (tokenResult.success && tokenResult.token) {
+        this.fcmToken = tokenResult.token
+        this.isInitialized = true
+
+        console.log('💾 Saving token to server...')
+        // Save token to server
+        await FCMManager.saveTokenToServer(tokenResult.token)
+
+        console.log('✅ FCM NotificationManager initialized successfully')
+        return { success: true, token: tokenResult.token }
+      } else {
+        console.error('❌ Failed to get FCM token:', tokenResult.error)
+        // Reset state on token failure
+        this.fcmToken = null
+        this.isInitialized = false
+        return {
+          success: false,
+          error: tokenResult.error || 'Failed to get FCM token'
+        }
+      }
+    } catch (error) {
+      console.error('💥 Error initializing FCM NotificationManager:', error)
+      // Reset state on error
+      this.fcmToken = null
+      this.isInitialized = false
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error in NotificationManager.initialize()'
+      }
+    }
+  }
+
   static async checkPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
       console.error('❌ Notifications not supported in this browser')
@@ -80,6 +183,15 @@ export class NotificationManager {
 
     console.log('❌ Permission denied')
     return false
+  }
+
+  // Get current FCM token
+  static async getFCMToken(): Promise<string | null> {
+    if (!this.isInitialized) {
+      const result = await this.initialize()
+      return result.token || null
+    }
+    return this.fcmToken
   }
 
   static async checkIOSCompatibility(): Promise<{
@@ -162,9 +274,74 @@ export class NotificationManager {
     }
   }
 
-  // iOS-compatible notification method using service worker
-  static async sendNotificationViaServiceWorker(data: NotificationData): Promise<boolean> {
-    console.log('📤 Sending notification via service worker:', data)
+  // Send FCM notification via server
+  static async sendFCMNotification(
+    notificationData: NotificationData,
+    targetToken?: string,
+    topic?: string
+  ): Promise<boolean> {
+    try {
+      console.log('📤 Sending FCM notification via server:', notificationData)
+
+      const payload: FCMNotificationPayload = {
+        notification: {
+          title: notificationData.title,
+          body: notificationData.body,
+          icon: notificationData.icon || '/icon-192x192.png',
+          image: notificationData.data?.image
+        },
+        data: {
+          ...notificationData.data,
+          type: notificationData.type || 'general',
+          tag: notificationData.tag || 'job-seeker-notification',
+          requireInteraction: notificationData.requireInteraction?.toString() || 'true',
+          silent: notificationData.silent?.toString() || 'false',
+          actions: notificationData.actions ? JSON.stringify(notificationData.actions) : '[]'
+        }
+      }
+
+      // Add target (token or topic)
+      if (targetToken) {
+        payload.token = targetToken
+      } else if (topic) {
+        payload.topic = topic
+      } else {
+        // Use current user's token
+        const token = await this.getFCMToken()
+        if (token) {
+          payload.token = token
+        } else {
+          console.error('❌ No FCM token available for notification')
+          return false
+        }
+      }
+
+      const response = await fetch('/api/fcm/send-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        console.log('✅ FCM notification sent successfully')
+        return true
+      } else {
+        console.error('❌ Failed to send FCM notification:', result.error)
+        return false
+      }
+    } catch (error) {
+      console.error('💥 Error sending FCM notification:', error)
+      return false
+    }
+  }
+
+  // Local notification fallback (for immediate notifications)
+  static async sendLocalNotification(data: NotificationData): Promise<boolean> {
+    console.log('📤 Sending local notification:', data)
 
     if (!('serviceWorker' in navigator)) {
       console.error('❌ Service Worker not supported')
@@ -187,42 +364,15 @@ export class NotificationManager {
         data: data.data,
         requireInteraction: data.requireInteraction,
         silent: data.silent,
+        ...(data.actions && { actions: data.actions })
       }
 
-      console.log('📱 Showing notification via service worker with options:', options)
-
-            // Use MessageChannel for better iOS compatibility
-      if (registration.active) {
-        return new Promise((resolve) => {
-          const messageChannel = new MessageChannel()
-
-          messageChannel.port1.onmessage = (event) => {
-            console.log('📨 Service worker response:', event.data)
-            resolve(event.data.success || false)
-          }
-
-          registration.active!.postMessage({
-            type: 'show-notification',
-            title: data.title,
-            options: options
-          }, [messageChannel.port2])
-
-          console.log('✅ Service worker notification message sent with MessageChannel')
-
-          // Fallback timeout in case no response
-          setTimeout(() => {
-            console.log('⏰ Service worker response timeout, assuming success')
-            resolve(true)
-          }, 3000)
-        })
-      } else {
-        // Fallback to direct registration method
-        await registration.showNotification(data.title, options)
-        console.log('✅ Service worker notification sent successfully (direct)')
-        return true
-      }
+      console.log('📱 Showing local notification via service worker')
+      await registration.showNotification(data.title, options)
+      console.log('✅ Local notification sent successfully')
+      return true
     } catch (error) {
-      console.error('💥 Error sending notification via service worker:', error)
+      console.error('💥 Error sending local notification:', error)
       return false
     }
   }
@@ -257,10 +407,10 @@ export class NotificationManager {
 
     const iosInfo = getIOSInfo()
 
-    // On iOS, always use service worker for better compatibility
+    // On iOS, prefer local notification for immediate display
     if (iosInfo.isIOS && iosInfo.isStandalone) {
-      console.log('🍎 Using service worker for iOS notification')
-      const success = await this.sendNotificationViaServiceWorker(data)
+      console.log('🍎 Using local notification for iOS')
+      const success = await this.sendLocalNotification(data)
       return success ? {} as Notification : null // Return a dummy notification object for compatibility
     }
 
@@ -303,9 +453,9 @@ export class NotificationManager {
       return notification
     } catch (error) {
       console.error('💥 Error creating notification:', error)
-      // Fallback to service worker if regular API fails
-      console.log('🔄 Falling back to service worker method')
-      const success = await this.sendNotificationViaServiceWorker(data)
+      // Fallback to local notification if regular API fails
+      console.log('🔄 Falling back to local notification method')
+      const success = await this.sendLocalNotification(data)
       return success ? {} as Notification : null
     }
   }
