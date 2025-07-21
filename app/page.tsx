@@ -1,6 +1,14 @@
 'use client'
 
+import { useEffect } from 'react'
+import { setupNotificationClickHandlers } from './utils/notifications'
+
 export default function Home() {
+  useEffect(() => {
+    // Initialize notification click handlers for deeplink navigation
+    setupNotificationClickHandlers()
+  }, [])
+
   return (
     <div className="space-y-8">
       <div className="text-center">

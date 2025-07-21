@@ -690,28 +690,70 @@ export async function send10SecondDelayedNotification(
 }
 
 // Enhanced notification click handler
+let notificationHandlerRegistered = false
+
 export function setupNotificationClickHandlers() {
+  // Prevent multiple registrations
+  if (notificationHandlerRegistered) {
+    console.log('🔄 Notification handlers already registered')
+    return
+  }
+
   // Listen for service worker navigation messages
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
+    const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'navigate') {
+        console.log('🔗 Navigation handler triggered:', event.data)
         const { url, notificationData } = event.data
 
         // Navigate to the specified URL
         if (url) {
-          window.location.href = url
+          console.log('🚀 Attempting navigation to:', url)
+
+          // Try multiple navigation approaches
+          try {
+            // Method 1: Direct assignment
+            window.location.href = url
+            console.log('✅ Navigation method 1 attempted')
+          } catch (error) {
+            console.error('❌ Navigation method 1 failed:', error)
+
+            try {
+              // Method 2: Using replace
+              window.location.replace(url)
+              console.log('✅ Navigation method 2 attempted')
+            } catch (error2) {
+              console.error('❌ Navigation method 2 failed:', error2)
+
+              try {
+                // Method 3: Using assign
+                window.location.assign(url)
+                console.log('✅ Navigation method 3 attempted')
+              } catch (error3) {
+                console.error('❌ All navigation methods failed:', error3)
+              }
+            }
+          }
+        } else {
+          console.log('❌ No URL provided for navigation')
         }
 
         // Handle any additional data
         if (notificationData) {
-          console.log('Notification data received:', notificationData)
+          console.log('📦 Notification data received:', notificationData)
           // You can dispatch custom events here if needed
           window.dispatchEvent(new CustomEvent('notificationNavigation', {
             detail: notificationData
           }))
         }
       }
-    })
+    }
+
+    navigator.serviceWorker.addEventListener('message', handleMessage)
+    notificationHandlerRegistered = true
+    console.log('✅ Notification click handlers initialized')
+  } else {
+    console.log('❌ Service Worker not supported')
   }
 }
 

@@ -241,6 +241,44 @@ export default function FCMTestPanel() {
     }
   }
 
+  const testDeeplinkNotification = async () => {
+    if (!fcmToken) {
+      addTestResult('❌ No FCM token available for deeplink testing')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      addTestResult('🔗 Testing deeplink notification...')
+      const success = await NotificationManager.sendFCMNotification({
+        title: 'Profile Update Required 👤',
+        body: 'Tap to complete your profile and increase your job match rate!',
+        type: 'deeplink-test',
+        tag: 'fcm-test-deeplink',
+        data: {
+          type: 'deeplink',
+          redirectUrl: '/profile',
+          action: 'navigate'
+        },
+        actions: [
+          { action: 'go-to-profile', title: '👤 Go to Profile' },
+          { action: 'dismiss', title: '❌ Dismiss' }
+        ]
+      })
+
+      if (success) {
+        addTestResult('✅ Deeplink notification sent successfully')
+        addTestResult('💡 Click the notification to test deeplink navigation to /profile')
+      } else {
+        addTestResult('❌ Deeplink notification failed')
+      }
+    } catch (error) {
+      addTestResult(`💥 Deeplink notification error: ${error}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const runFullTest = async () => {
     clearResults()
     addTestResult('🚀 Running comprehensive FCM test...')
@@ -258,6 +296,8 @@ export default function FCMTestPanel() {
     await new Promise(resolve => setTimeout(resolve, 2000))
 
     await testTopicSubscription()
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    await testDeeplinkNotification()
 
     addTestResult('🏁 Comprehensive test completed!')
   }
@@ -268,6 +308,7 @@ export default function FCMTestPanel() {
     { id: 'fcm', name: 'FCM Push', icon: '🌐' },
     { id: 'jobs', name: 'Job Notifications', icon: '💼' },
     { id: 'topics', name: 'Topic Management', icon: '📋' },
+    { id: 'deeplinks', name: 'Deeplink Tests', icon: '🔗' },
     { id: 'full', name: 'Full Test Suite', icon: '🧪' }
   ]
 
@@ -385,6 +426,16 @@ export default function FCMTestPanel() {
               className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
             >
               {isLoading ? 'Testing...' : '📋 Test Topics'}
+            </button>
+          )}
+
+          {activeTest === 'deeplinks' && (
+            <button
+              onClick={testDeeplinkNotification}
+              disabled={isLoading || !fcmToken}
+              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
+            >
+              {isLoading ? 'Testing...' : '🔗 Test Deeplinks'}
             </button>
           )}
 

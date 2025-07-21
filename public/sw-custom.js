@@ -472,22 +472,32 @@ self.addEventListener('notificationclick', (event) => {
 
   // Get redirect URL from notification data
   const redirectUrl = event.notification.data?.redirectUrl || '/'
+  const fullUrl = new URL(redirectUrl, self.location.origin).href
+
+  console.log('🔗 Redirect URL:', redirectUrl, 'Full URL:', fullUrl)
 
   // Focus or open the app
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // If app is already open, focus it and navigate
+        // If app is already open, focus it and send navigation message
         for (const client of clientList) {
           if (client.url.includes(self.location.origin)) {
-            console.log('🔍 Found existing client, focusing and navigating')
-            return client.focus().then(() => client.navigate(redirectUrl))
+            console.log('🔍 Found existing client, focusing and sending navigation message')
+            return client.focus().then(() => {
+              // Send navigation message to client instead of using client.navigate()
+              return client.postMessage({
+                type: 'navigate',
+                url: redirectUrl,
+                notificationData: event.notification.data
+              })
+            })
           }
         }
 
         // If app is not open, open it
         console.log('🚀 Opening new client window')
-        return clients.openWindow(redirectUrl)
+        return clients.openWindow(fullUrl)
       })
       .catch((error) => {
         console.error('❌ Error handling notification click:', error)
