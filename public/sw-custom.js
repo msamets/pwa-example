@@ -67,6 +67,7 @@ messaging.onBackgroundMessage((payload) => {
   }
 
   console.log('🔔 Showing FCM notification with data:', notificationOptions.data)
+  console.log('🍎 iOS detection in SW:', isIOSPWA())
 
   return self.registration.showNotification(title || 'Job Seeker', notificationOptions)
 })
@@ -547,26 +548,48 @@ self.addEventListener('notificationclick', (event) => {
   // Focus or open the app
   event.waitUntil(handleNavigation(fullUrl, data))
 
+// Helper function to detect iOS PWA from service worker
+function isIOSPWA() {
+  // Service worker doesn't have access to window, so we detect iOS differently
+  const userAgent = self.navigator.userAgent.toLowerCase()
+  const isIOS = /iphone|ipad|ipod/.test(userAgent)
+
+  // For service workers, we assume if it's iOS and we're handling notifications,
+  // it's likely a PWA (since notifications work better in PWAs)
+  return isIOS
+}
+
 // Helper function to handle navigation
 async function handleNavigation(targetUrl, notificationData) {
   try {
     console.log('🚀 Handling navigation to:', targetUrl)
 
+    const isIOS = isIOSPWA()
+    console.log('📱 iOS PWA detected:', isIOS)
+
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
-    // If app is already open, focus it and send navigation message
+    // If app is already open
     for (const client of clients) {
       if (client.url.includes(self.location.origin)) {
-        console.log('🔍 Found existing client, focusing and sending navigation message')
-        await client.focus()
+        console.log('🔍 Found existing client')
 
-        // Send navigation message to client
-        client.postMessage({
-          type: 'navigate',
-          url: targetUrl,
-          notificationData: notificationData
-        })
-        return
+        if (isIOS) {
+          // iOS PWA: Use openWindow even when app is open for reliable navigation
+          console.log('🍎 iOS PWA: Using openWindow for reliable navigation')
+          return self.clients.openWindow(targetUrl)
+        } else {
+          // Desktop/Android: Use focus + postMessage
+          console.log('🖥️ Desktop: Using focus + postMessage')
+          await client.focus()
+
+          client.postMessage({
+            type: 'navigate',
+            url: targetUrl,
+            notificationData: notificationData
+          })
+          return
+        }
       }
     }
 
@@ -575,6 +598,14 @@ async function handleNavigation(targetUrl, notificationData) {
     return self.clients.openWindow(targetUrl)
   } catch (error) {
     console.error('❌ Error handling navigation:', error)
+
+    // Fallback: always try openWindow if other methods fail
+    try {
+      console.log('🔄 Fallback: Attempting openWindow')
+      return self.clients.openWindow(targetUrl)
+    } catch (fallbackError) {
+      console.error('❌ Fallback also failed:', fallbackError)
+    }
   }
 }
 })

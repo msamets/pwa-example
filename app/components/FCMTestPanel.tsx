@@ -241,7 +241,7 @@ export default function FCMTestPanel() {
     }
   }
 
-  const testDeeplinkNotification = async () => {
+    const testDeeplinkNotification = async () => {
     if (!fcmToken) {
       addTestResult('❌ No FCM token available for deeplink testing')
       return
@@ -252,6 +252,10 @@ export default function FCMTestPanel() {
       addTestResult('🔗 Testing deeplink notification...')
       addTestResult(`🔧 Using FCM token: ${fcmToken.substring(0, 20)}...`)
 
+      // Add iOS detection info
+      const iosInfo = await import('../utils/notifications').then(m => m.getIOSInfo())
+      addTestResult(`📱 Device info: ${iosInfo.isIOS ? 'iOS' : 'Desktop'}, PWA: ${iosInfo.isStandalone ? 'Yes' : 'No'}`)
+
       const success = await NotificationManager.sendFCMNotification({
         title: 'Profile Update Required 👤',
         body: 'Tap to complete your profile and increase your job match rate!',
@@ -261,7 +265,10 @@ export default function FCMTestPanel() {
           type: 'deeplink-test',
           redirectUrl: '/profile',
           url: '/profile', // Add both for compatibility
-          action: 'navigate'
+          action: 'navigate',
+          // Add iOS-specific data for debugging
+          platform: iosInfo.isIOS ? 'ios' : 'desktop',
+          isStandalone: String(iosInfo.isStandalone)
         },
         actions: [
           { action: 'go-to-profile', title: '👤 Go to Profile' },
@@ -273,6 +280,9 @@ export default function FCMTestPanel() {
         addTestResult('✅ Deeplink notification sent successfully')
         addTestResult('💡 Click the notification or action button to test deeplink navigation to /profile')
         addTestResult('🔍 Check browser console for service worker debug logs')
+        if (iosInfo.isIOS) {
+          addTestResult('🍎 iOS PWA: Service worker will use openWindow() for reliable navigation')
+        }
       } else {
         addTestResult('❌ Deeplink notification failed')
       }

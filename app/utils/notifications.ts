@@ -699,6 +699,9 @@ export function setupNotificationClickHandlers() {
     return
   }
 
+  const iosInfo = getIOSInfo()
+  console.log('📱 Setting up notification handlers for:', iosInfo.isIOS ? 'iOS' : 'Desktop')
+
   // Listen for service worker navigation messages
   if ('serviceWorker' in navigator) {
     const handleMessage = (event: MessageEvent) => {
@@ -710,27 +713,54 @@ export function setupNotificationClickHandlers() {
         if (url) {
           console.log('🚀 Attempting navigation to:', url)
 
-          // Try multiple navigation approaches
-          try {
-            // Method 1: Direct assignment
-            window.location.href = url
-            console.log('✅ Navigation method 1 attempted')
-          } catch (error) {
-            console.error('❌ Navigation method 1 failed:', error)
+          if (iosInfo.isIOS && iosInfo.isStandalone) {
+            // iOS PWA: Use more robust navigation methods
+            console.log('🍎 iOS PWA navigation')
 
             try {
-              // Method 2: Using replace
-              window.location.replace(url)
-              console.log('✅ Navigation method 2 attempted')
-            } catch (error2) {
-              console.error('❌ Navigation method 2 failed:', error2)
+              // For iOS PWA, try multiple methods in sequence
+              if (window.location.pathname !== new URL(url, window.location.origin).pathname) {
+                // Method 1: Use history API for SPA navigation
+                window.history.pushState(null, '', url)
+                window.dispatchEvent(new PopStateEvent('popstate'))
+                console.log('✅ iOS navigation via history API')
+              } else {
+                console.log('🔄 Already on target page')
+              }
+            } catch (historyError) {
+              console.error('❌ History API failed:', historyError)
 
               try {
-                // Method 3: Using assign
-                window.location.assign(url)
-                console.log('✅ Navigation method 3 attempted')
-              } catch (error3) {
-                console.error('❌ All navigation methods failed:', error3)
+                // Method 2: Direct assignment
+                window.location.href = url
+                console.log('✅ iOS navigation via location.href')
+              } catch (locationError) {
+                console.error('❌ iOS navigation failed:', locationError)
+              }
+            }
+          } else {
+            // Desktop/Android: Use standard navigation
+            try {
+              // Method 1: Direct assignment
+              window.location.href = url
+              console.log('✅ Navigation method 1 attempted')
+            } catch (error) {
+              console.error('❌ Navigation method 1 failed:', error)
+
+              try {
+                // Method 2: Using replace
+                window.location.replace(url)
+                console.log('✅ Navigation method 2 attempted')
+              } catch (error2) {
+                console.error('❌ Navigation method 2 failed:', error2)
+
+                try {
+                  // Method 3: Using assign
+                  window.location.assign(url)
+                  console.log('✅ Navigation method 3 attempted')
+                } catch (error3) {
+                  console.error('❌ All navigation methods failed:', error3)
+                }
               }
             }
           }
