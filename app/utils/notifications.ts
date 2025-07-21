@@ -66,72 +66,69 @@ export function getIOSInfo() {
 export class NotificationManager {
   private static fcmToken: string | null = null
   private static isInitialized = false
+  private static healthCheckInterval: NodeJS.Timeout | null = null
 
   // Reset FCM state (useful for debugging and recovery)
   static reset(): void {
     console.log('🔄 Resetting NotificationManager state...')
     this.fcmToken = null
     this.isInitialized = false
+
+    // Clear health check interval
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval)
+      this.healthCheckInterval = null
+    }
+
     FCMManager.reset()
   }
 
-  // Initialize FCM and get token
+  // Enhanced initialization with double-check mechanism
   static async initialize(): Promise<{success: boolean, token?: string, error?: string}> {
     try {
-      if (this.isInitialized && this.fcmToken) {
-        console.log('✅ FCM already initialized, returning existing token')
-        return { success: true, token: this.fcmToken }
-      }
+      console.log('🚀 Initializing FCM NotificationManager with double-check...')
 
-      console.log('🚀 Initializing FCM NotificationManager...')
-
-      // Initialize FCM
-      console.log('🔧 Calling FCMManager.initialize()...')
-      const initialized = await FCMManager.initialize()
-      console.log('📊 FCMManager.initialize() result:', initialized)
+      // Use the enhanced initialization with retry logic
+      const initialized = await FCMManager.initializeWithRetry()
 
       if (!initialized) {
-        console.error('❌ FCMManager.initialize() returned false')
-        // Reset our state too since FCM failed
-        this.fcmToken = null
-        this.isInitialized = false
-        return { success: false, error: 'FCM initialization failed - check console for detailed error logs' }
-      }
+        // Get detailed state for better error reporting
+        const state = FCMManager.getState()
+        console.error('❌ FCMManager.initializeWithRetry() failed:', state.lastError)
 
-      console.log('✅ FCM basic initialization successful, getting token...')
-
-      // Get FCM token
-      console.log('🔧 Calling FCMManager.requestPermissionAndGetToken()...')
-      const tokenResult = await FCMManager.requestPermissionAndGetToken()
-      console.log('📊 Token result:', {
-        success: tokenResult.success,
-        hasToken: !!tokenResult.token,
-        error: tokenResult.error,
-        tokenPreview: tokenResult.token?.substring(0, 20) + '...'
-      })
-
-      if (tokenResult.success && tokenResult.token) {
-        this.fcmToken = tokenResult.token
-        this.isInitialized = true
-
-        console.log('💾 Saving token to server...')
-        // Save token to server
-        await FCMManager.saveTokenToServer(tokenResult.token)
-
-        console.log('✅ FCM NotificationManager initialized successfully')
-        return { success: true, token: tokenResult.token }
-      } else {
-        console.error('❌ Failed to get FCM token:', tokenResult.error)
-        // Reset state on token failure
-        this.fcmToken = null
-        this.isInitialized = false
         return {
           success: false,
-          error: tokenResult.error || 'Failed to get FCM token'
+          error: `FCM initialization failed after ${state.retryCount} attempts: ${state.lastError || 'Unknown error'}`
+        }
+      }
+
+      console.log('✅ FCM initialization successful, getting validated token...')
+
+      // Get the current validated token
+      const token = await FCMManager.getCurrentToken()
+
+      if (token) {
+        this.fcmToken = token
+        this.isInitialized = true
+
+        console.log('💾 Saving validated token to server...')
+        // Save token to server
+        await FCMManager.saveTokenToServer(token)
+
+        // Start periodic health checks
+        this.startHealthChecks()
+
+        console.log('✅ FCM NotificationManager initialized successfully with validation')
+        return { success: true, token: token }
+      } else {
+        console.error('❌ Failed to get validated FCM token')
+        return {
+          success: false,
+          error: 'Failed to get validated FCM token'
         }
       }
     } catch (error) {
-      console.error('💥 Error initializing FCM NotificationManager:', error)
+      console.error('💥 Error in NotificationManager.initialize():', error)
       // Reset state on error
       this.fcmToken = null
       this.isInitialized = false
@@ -185,13 +182,162 @@ export class NotificationManager {
     return false
   }
 
-  // Get current FCM token
+  // Enhanced token retrieval with automatic reinitialization
   static async getFCMToken(): Promise<string | null> {
-    if (!this.isInitialized) {
-      const result = await this.initialize()
-      return result.token || null
+    // First, try to get current validated token
+    const currentToken = await FCMManager.getCurrentToken()
+
+    if (currentToken) {
+      this.fcmToken = currentToken
+      this.isInitialized = true
+      return currentToken
     }
-    return this.fcmToken
+
+    // If no current token, try to initialize
+    console.log('🔄 No validated token available, attempting initialization...')
+    const result = await this.initialize()
+    return result.token || null
+  }
+
+  // Double-check token validity and reinitialize if needed
+  static async verifyAndRefreshToken(): Promise<{success: boolean, token?: string, error?: string}> {
+    try {
+      console.log('🔍 Verifying and refreshing FCM token...')
+
+      // Check current FCM state
+      const state = FCMManager.getState()
+      console.log('📊 Current FCM state:', {
+        isInitialized: state.isInitialized,
+        tokenValidated: state.tokenValidated,
+        retryCount: state.retryCount,
+        hasToken: !!state.currentToken
+      })
+
+      // If token is not validated or is stale, force refresh
+      if (!state.tokenValidated || !state.currentToken) {
+        console.log('🔄 Token needs refresh, forcing reinitialization...')
+        const success = await FCMManager.forceReinitialize()
+
+        if (success) {
+          const newToken = await FCMManager.getCurrentToken()
+          if (newToken) {
+            this.fcmToken = newToken
+            this.isInitialized = true
+            return { success: true, token: newToken }
+          }
+        }
+
+        return { success: false, error: 'Failed to refresh token' }
+      }
+
+      // Token appears valid
+      this.fcmToken = state.currentToken
+      this.isInitialized = true
+      return { success: true, token: state.currentToken }
+
+    } catch (error) {
+      console.error('💥 Error verifying and refreshing token:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  }
+
+  // Start periodic health checks
+  static startHealthChecks(): void {
+    // Avoid multiple intervals
+    if (this.healthCheckInterval) {
+      return
+    }
+
+    console.log('🏥 Starting NotificationManager health checks...')
+
+    // Start FCM health checks
+    FCMManager.startPeriodicHealthCheck()
+
+    // Additional NotificationManager-specific health checks
+    this.healthCheckInterval = setInterval(async () => {
+      try {
+        // Verify our local state matches FCM state
+        const fcmState = FCMManager.getState()
+
+        if (fcmState.isInitialized && fcmState.tokenValidated && fcmState.currentToken) {
+          // Update our local state to match
+          if (this.fcmToken !== fcmState.currentToken) {
+            console.log('🔄 Syncing local token with FCM state...')
+            this.fcmToken = fcmState.currentToken
+            this.isInitialized = true
+          }
+        } else if (this.isInitialized) {
+          // FCM state is invalid but we think we're initialized
+          console.warn('⚠️ FCM state mismatch detected, refreshing...')
+          await this.verifyAndRefreshToken()
+        }
+      } catch (error) {
+        console.error('💥 NotificationManager health check error:', error)
+      }
+    }, 5 * 60 * 1000) // Check every 5 minutes
+  }
+
+  // Stop health checks (useful for cleanup)
+  static stopHealthChecks(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval)
+      this.healthCheckInterval = null
+      console.log('🏥 NotificationManager health checks stopped')
+    }
+  }
+
+  // Enhanced initialization that tries multiple approaches
+  static async ensureInitialized(): Promise<{success: boolean, token?: string, error?: string}> {
+    // Quick check if already properly initialized
+    if (this.isInitialized && this.fcmToken) {
+      const isValid = await FCMManager.validateToken(this.fcmToken)
+      if (isValid) {
+        console.log('✅ Already initialized with valid token')
+        return { success: true, token: this.fcmToken }
+      }
+    }
+
+    console.log('🚀 Ensuring FCM initialization...')
+
+    // Try normal initialization first
+    let result = await this.initialize()
+    if (result.success) {
+      return result
+    }
+
+    console.log('🔄 Normal initialization failed, trying token verification...')
+
+    // Try verification and refresh
+    result = await this.verifyAndRefreshToken()
+    if (result.success) {
+      return result
+    }
+
+    console.log('🔄 Token verification failed, trying force reinitialization...')
+
+    // Last resort: force complete reinitialization
+    try {
+      const success = await FCMManager.forceReinitialize()
+      if (success) {
+        const token = await FCMManager.getCurrentToken()
+        if (token) {
+          this.fcmToken = token
+          this.isInitialized = true
+          this.startHealthChecks()
+          return { success: true, token }
+        }
+      }
+    } catch (error) {
+      console.error('💥 Force reinitialization failed:', error)
+    }
+
+    return {
+      success: false,
+      error: 'All initialization attempts failed. Check console for detailed logs.'
+    }
   }
 
   static async checkIOSCompatibility(): Promise<{
@@ -274,7 +420,7 @@ export class NotificationManager {
     }
   }
 
-  // Send FCM notification via server
+  // Send FCM notification via server with enhanced token handling
   static async sendFCMNotification(
     notificationData: NotificationData,
     targetToken?: string,
@@ -306,13 +452,27 @@ export class NotificationManager {
       } else if (topic) {
         payload.topic = topic
       } else {
-        // Use current user's token
-        const token = await this.getFCMToken()
-        if (token) {
-          payload.token = token
+        // Use current user's token with enhanced validation
+        console.log('🔍 Getting validated FCM token for notification...')
+
+        // Try to ensure we have a valid token
+        const tokenResult = await this.ensureInitialized()
+
+        if (tokenResult.success && tokenResult.token) {
+          payload.token = tokenResult.token
+          console.log('✅ Using validated token for notification')
         } else {
-          console.error('❌ No FCM token available for notification')
-          return false
+          console.error('❌ No valid FCM token available for notification:', tokenResult.error)
+
+          // Try one more time with getFCMToken as fallback
+          const fallbackToken = await this.getFCMToken()
+          if (fallbackToken) {
+            console.log('🔄 Using fallback token')
+            payload.token = fallbackToken
+          } else {
+            console.error('❌ All token retrieval methods failed')
+            return false
+          }
         }
       }
 
@@ -331,6 +491,21 @@ export class NotificationManager {
         return true
       } else {
         console.error('❌ Failed to send FCM notification:', result.error)
+
+        // If token-related error, try to refresh token
+        if (result.error && (
+          result.error.includes('invalid') ||
+          result.error.includes('not-registered') ||
+          result.error.includes('token')
+        )) {
+          console.log('🔄 Token error detected, attempting token refresh...')
+          const refreshResult = await this.verifyAndRefreshToken()
+
+          if (refreshResult.success) {
+            console.log('✅ Token refreshed, you may retry the notification')
+          }
+        }
+
         return false
       }
     } catch (error) {
